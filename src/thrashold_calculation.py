@@ -42,8 +42,10 @@ for question in questions:
 # Compute mean and median
 mean_score = np.mean(scores)
 median_score = np.median(scores)
+std_score = np.std(scores)
 
 # Print results
 print(f"\n--- Evaluation Summary ---")
 print(f"Mean Score: {mean_score:.4f}")
 print(f"Median Score: {median_score:.4f}")
+print(f"Standard Deviation: {std_score:.4f}")
