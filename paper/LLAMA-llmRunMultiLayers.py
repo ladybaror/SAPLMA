@@ -10,7 +10,7 @@ import pandas as pd
 import numpy as np
 from typing import Dict
 import torch
-from paper.config import BASE_MODEL_PATH, MODEL_NAME, LAYERS_TO_USE, LIST_OF_DATASETS, REMOVE_PERIOD, DATASET_FOLDER, CSV_SUFFIX
+from config import BASE_MODEL_PATH, MODEL_NAME, LAYERS_TO_USE, LIST_OF_DATASETS, REMOVE_PERIOD, DATASET_FOLDER, CSV_SUFFIX
 import os
 
 model = AutoModelForCausalLM.from_pretrained(BASE_MODEL_PATH, device_map="auto", torch_dtype=torch.float16, trust_remote_code=True)
