@@ -2,5 +2,6 @@
 __pycache__
 private_keys
 models/Llama*
+pretrained_saplma
 data
 pretrained_saplma

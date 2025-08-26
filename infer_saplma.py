@@ -1,4 +1,4 @@
-from saplma_api import load_best_bundle, embed_texts_last_token, predict_embeddings
+from guarded_infer.saplma_api import load_best_bundle, embed_texts_last_token, predict_embeddings
 from paper.config import BASE_MODEL_PATH   # ensure you embed with the same base model used in training
 
 BUNDLE = "pretrained_saplma/completion/saplma_checkpoints_LLAMA7/BEST_layer12__heldout_data/elements"
