@@ -722,8 +722,8 @@ if __name__ == "__main__":
         strip_enumeration_for_class=True,
         classify_strip_trailing_period=True,
         # Hybrid sampling knobs
-        top_p=0.95,
-        temperature=1.1,
+        top_p=0.8,
+        temperature=0.8,
         min_tokens_to_keep=5,
         relax_filters_on_last_retry=True,
         # Threshold tweak

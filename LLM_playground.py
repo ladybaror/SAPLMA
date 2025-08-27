@@ -3,8 +3,9 @@ from __future__ import annotations
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, set_seed
 
-PROMPT = "Dogs are loyal and also"          # your input
-MODEL  = "models/Llama-2-7B-Chat-fp16"   # local path / HF id
+PROMPT = "Dogs are loyal and also"
+# MODEL  = "models/Llama-2-7B-Chat-fp16"
+MODEL  = "models/Llama-2-7b-chat-hf"
 
 # Generation knobs
 MAX_NEW_TOKENS = 80
@@ -71,44 +72,59 @@ def main():
         set_seed(SEED)
         torch.manual_seed(SEED)
 
-    tok = AutoTokenizer.from_pretrained(MODEL, trust_remote_code=True)
-    if tok.pad_token is None:
-        tok.pad_token = tok.eos_token
-        tok.pad_token_id = tok.eos_token_id
+    tok: AutoTokenizer = AutoTokenizer.from_pretrained(MODEL, trust_remote_code=True)
+    
+    # Print all special tokens
+    print("Special tokens:", tok.special_tokens_map)
 
-    torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-    mdl = AutoModelForCausalLM.from_pretrained(MODEL, torch_dtype=torch_dtype, device_map="auto")
-    mdl.eval()
+    # Print the actual token strings
+    print("All special tokens:", tok.all_special_tokens)
 
-    prompt_text = build_prompt_text(tok, PROMPT, USE_CHAT_TEMPLATE)
+    # Print their IDs
+    print("All special token IDs:", tok.all_special_ids)
 
-    # 1) Greedy continuation (deterministic)
-    greedy_text = generate_once(
-        mdl, tok, prompt_text,
-        do_sample=False,
-        max_new_tokens=MAX_NEW_TOKENS,
-    )
+    # Example: Access individual special tokens
+    print("BOS token:", tok.bos_token, "->", tok.bos_token_id)
+    print("EOS token:", tok.eos_token, "->", tok.eos_token_id)
+    print("PAD token:", tok.pad_token, "->", tok.pad_token_id)
 
-    # 2) Nucleus sampling continuation (stochastic)
-    sampled_text = generate_once(
-        mdl, tok, prompt_text,
-        do_sample=True,
-        temperature=TEMPERATURE,
-        top_p=TOP_P,
-        max_new_tokens=MAX_NEW_TOKENS,
-    )
+    # if tok.pad_token is None:
+    #     tok.pad_token = tok.eos_token
+    #     tok.pad_token_id = tok.eos_token_id
 
-    print("=== PROMPT ===")
-    print(repr(PROMPT))
-    print("\n=== GREEDY (full) ===")
-    print(greedy_text)
-    print("\n--- GREEDY (first sentence) ---")
-    print(first_sentence(greedy_text))
+    # torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+    # mdl = AutoModelForCausalLM.from_pretrained(MODEL, torch_dtype=torch_dtype, device_map="auto")
+    # mdl.eval()
 
-    print("\n=== SAMPLED (full) ===")
-    print(sampled_text)
-    print("\n--- SAMPLED (first sentence) ---")
-    print(first_sentence(sampled_text))
+    # prompt_text = build_prompt_text(tok, PROMPT, USE_CHAT_TEMPLATE)
+
+    # # 1) Greedy continuation (deterministic)
+    # greedy_text = generate_once(
+    #     mdl, tok, prompt_text,
+    #     do_sample=False,
+    #     max_new_tokens=MAX_NEW_TOKENS,
+    # )
+
+    # # 2) Nucleus sampling continuation (stochastic)
+    # sampled_text = generate_once(
+    #     mdl, tok, prompt_text,
+    #     do_sample=True,
+    #     temperature=TEMPERATURE,
+    #     top_p=TOP_P,
+    #     max_new_tokens=MAX_NEW_TOKENS,
+    # )
+
+    # print("=== PROMPT ===")
+    # print(repr(PROMPT))
+    # print("\n=== GREEDY (full) ===")
+    # print(greedy_text)
+    # print("\n--- GREEDY (first sentence) ---")
+    # print(first_sentence(greedy_text))
+
+    # print("\n=== SAMPLED (full) ===")
+    # print(sampled_text)
+    # print("\n--- SAMPLED (first sentence) ---")
+    # print(first_sentence(sampled_text))
 
 if __name__ == "__main__":
     main()
