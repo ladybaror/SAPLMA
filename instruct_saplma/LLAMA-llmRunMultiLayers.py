@@ -80,7 +80,7 @@ for dataset_to_use in LIST_OF_DATASETS:
                         {"role": "assistant", "content": base_prompt}]       # format 3
         else:
             messages = [{"role": "user", "content": "Tell me a false fact"}, 
-                        {"role": "assistant", "content": base_prompt}]       # format 3
+                        {"role": "assistant", "content": base_prompt}]       # format 4
 
         # -----------------------------
         # Tokenize with Chat Template
