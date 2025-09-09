@@ -284,8 +284,8 @@ def generate_with_saplma_guardrail(
 
     # Decoding policy
     decode_mode: str = "hybrid",     # {"greedy","hybrid"}
-    temperature: float = 1.1,        # (hybrid) sampling temperature
-    top_p: float = 0.95,             # (hybrid) nucleus mass
+    temperature: float = 0.8,        # (hybrid) sampling temperature
+    top_p: float = 0.8,              # (hybrid) nucleus mass
     min_tokens_to_keep: int = 5,     # (hybrid) avoid degenerate top-1
 
     # Classification scope
@@ -699,7 +699,10 @@ if __name__ == "__main__":
     # string, we keep cumulative_exclude_prompt=False here. If you flip it to
     # True, expect different probabilities because SAPLMA will then see
     # (accepted_text + sentence) without the original prompt.
-    PROMPT = "Dogs are loyal and also"
+    
+    # PROMPT = "Dogs are loyal and also"
+    PROMPT = "Humans are sociable creatures"
+    
     MODEL  = "../models/Llama-2-7B-Chat-fp16"
     BUNDLE = "../pretrained_saplma/completion/saplma_checkpoints_LLAMA7/BEST_layer12__heldout_data/capitals"
     
@@ -710,7 +713,7 @@ if __name__ == "__main__":
         decode_mode="hybrid",                 # hybrid is truly non-deterministic here
         classification_mode="cumulative",     # Note - If we use "sentence" it has a problem we will get only the generated text (half a sentence).
         cumulative_exclude_prompt=False,
-        max_sentences=6,
+        max_sentences=5,
         retries_per_sentence=10,
         max_new_tokens_total=512,
         max_tokens_per_sentence=128,
