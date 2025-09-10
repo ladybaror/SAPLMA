@@ -1,0 +1,132 @@
+# ---------------------------------------------------------------------- Try 1 ----------------------------------------------------------------------
+
+
+15:01:58 | INFO  | ======== SAPLMA Guarded Generation ========
+15:01:58 | INFO  | Prompt            : Humans are sociable creatures
+15:01:58 | INFO  | Base model path   : ../models/Llama-2-7B-Chat-fp16
+15:01:58 | INFO  | Bundle            : ../pretrained_saplma/completion/saplma_checkpoints_LLAMA7/BEST_layer12__heldout_data/capitals
+15:01:58 | INFO  | Layer from end    : -12
+15:01:58 | INFO  | SAPLMA threshold  : 0.4864 (best=0.4864, offset=+0.0000)
+15:01:58 | INFO  | Context window    : 4096
+15:01:58 | INFO  | Decoding          : HYBRID (sample first token each attempt; last retry samples all tokens; top-p=0.80, temp=0.80, keep>=5)
+15:01:58 | INFO  | Classify scope    : CUMULATIVE
+15:01:58 | INFO  | Device            : cuda:0 | dtype=torch.float16
+15:01:58 | INFO  | Limits            : 5 sentences | 512 total tokens | 128 tokens/sentence | 10 retries/sentence
+15:01:58 | INFO  | Filters           : min_len=1 | min_alpha=1 | require_space=True | require_keywords=[] | strip_enum_for_class=True | relax_last=True
+15:01:58 | INFO  | [START]
+15:02:01 | INFO  | [SKIP] '' (too short (<1)) | mode=SAMPLE-ALL
+Curr_sentence to check:  Humans are sociable creatures and we enjoy the company of others
+15:02:07 | INFO  | [SENTENCE] scope=cumulative | mode=SAMPLE-ALL | text='Humans are sociable creatures and we enjoy the company of others' | prob_true=0.9955 thr=0.4864 -> ACCEPT
+Curr_sentence to check:  Humans are sociable creatures and we enjoy the company of others. This is why we have created communities, friendships, and relationships throughout history
+15:02:17 | INFO  | [SENTENCE] scope=cumulative | mode=SAMPLE-ALL | text='Humans are sociable creatures and we enjoy the company of others. This is why we have created communities, friendships, and relationships throughout history' | prob_true=0.7384 thr=0.4864 -> ACCEPT
+Curr_sentence to check:  Humans are sociable creatures and we enjoy the company of others. This is why we have created communities, friendships, and relationships throughout history. However, the rise of technology has led to a shift in how we interact with each other, with some people arguing that it has created a sense of isolation and disconnection
+15:02:42 | INFO  | [SENTENCE] scope=cumulative | mode=SAMPLE-ALL | text='Humans are sociable creatures and we enjoy the company of others. This is why we have created communities, friendships, and relationships throughout history. However, the rise of technology has led to a shift in how we interact with each other, with some people arguing that it has created a sense of isolation and disconnection' | prob_true=0.4537 thr=0.4864 -> REJECT
+Curr_sentence to check:  Humans are sociable creatures and we enjoy the company of others. This is why we have created communities, friendships, and relationships throughout history. But, what happens when we can’t be around others due to circumstances beyond our control?
+15:02:55 | INFO  | [SENTENCE] scope=cumulative | mode=SAMPLE-ALL | text='Humans are sociable creatures and we enjoy the company of others. This is why we have created communities, friendships, and relationships throughout history. But, what happens when we can’t be around others due to circumstances beyond our control?' | prob_true=0.1134 thr=0.4864 -> REJECT
+15:03:18 | INFO  | [SKIP] '' (too short (<1)) | mode=SAMPLE-ALL
+Curr_sentence to check:  Humans are sociable creatures and we enjoy the company of others. This is why we have created communities, friendships, and relationships throughout history. It is also why we are drawn to social media platforms, forums, and other online spaces where we can connect with others
+15:03:35 | INFO  | [SENTENCE] scope=cumulative | mode=SAMPLE-ALL | text='Humans are sociable creatures and we enjoy the company of others. This is why we have created communities, friendships, and relationships throughout history. It is also why we are drawn to social media platforms, forums, and other online spaces where we can connect with others' | prob_true=0.9760 thr=0.4864 -> ACCEPT
+Curr_sentence to check:  Humans are sociable creatures and we enjoy the company of others. This is why we have created communities, friendships, and relationships throughout history. It is also why we are drawn to social media platforms, forums, and other online spaces where we can connect with others. Social media has revolutionized the way we communicate and interact with each other, allowing us to connect with people from all over the world and share ideas, experiences, and perspectives
+15:04:02 | INFO  | [SENTENCE] scope=cumulative | mode=SAMPLE-ALL | text='Humans are sociable creatures and we enjoy the company of others. This is why we have created communities, friendships, and relationships throughout history. It is also why we are drawn to social media platforms, forums, and other online spaces where we can connect with others. Social media has revolutionized the way we communicate and interact with each other, allowing us to connect with people from all over the world and share ideas, experiences, and perspectives' | prob_true=0.9767 thr=0.4864 -> ACCEPT
+Curr_sentence to check:  Humans are sociable creatures and we enjoy the company of others. This is why we have created communities, friendships, and relationships throughout history. It is also why we are drawn to social media platforms, forums, and other online spaces where we can connect with others. Social media has revolutionized the way we communicate and interact with each other, allowing us to connect with people from all over the world and share ideas, experiences, and perspectives. While social media has its downsides, such as the spread of misinformation and cyberbullying, it has also created countless opportunities for connection, collaboration, and community-building
+15:04:34 | INFO  | [SENTENCE] scope=cumulative | mode=SAMPLE-ALL | text='Humans are sociable creatures and we enjoy the company of others. This is why we have created communities, friendships, and relationships throughout history. It is also why we are drawn to social media platforms, forums, and other online spaces where we can connect with others. Social media has revolutionized the way we communicate and interact with each other, allowing us to connect with people from all over the world and share ideas, experiences, and perspectives. While social media has its downsides, such as the spread of misinformation and cyberbullying, it has also created countless opportunities for connection, collaboration, and community-building' | prob_true=0.7927 thr=0.4864 -> ACCEPT
+15:04:34 | INFO  | [DONE] Max sentences reached.
+15:04:34 | INFO  | ======== SUMMARY ========
+15:04:34 | INFO  | Accepted sentences : 5
+15:04:34 | INFO  | Rejected sentences : 2
+15:04:34 | INFO  | Trivial skips      : 2
+15:04:34 | INFO  | Stopped by EOS     : False
+15:04:34 | INFO  | Stopped by budget  : False
+15:04:34 | INFO  | Elapsed            : 162.21s
+15:04:34 | INFO  | Final answer       : Humans are sociable creatures and we enjoy the company of others. This is why we have created communities, friendships, and relationships throughout history. It is also why we are drawn to social media platforms, forums, and other online spaces where we can connect with others. Social media has revolutionized the way we communicate and interact with each other, allowing us to connect with people from all over the world and share ideas, experiences, and perspectives. While social media has its downsides, such as the spread of misinformation and cyberbullying, it has also created countless opportunities for connection, collaboration, and community-building.
+
+=== FINAL ANSWER (CUMULATIVE SCOPE) ===
+Humans are sociable creatures and we enjoy the company of others. This is why we have created communities, friendships,
+and relationships throughout history. It is also why we are drawn to social media platforms, forums, and other online 
+spaces where we can connect with others. Social media has revolutionized the way we communicate and interact with each other, 
+allowing us to connect with people from all over the world and share ideas, experiences, and perspectives. While social media 
+has its downsides, such as the spread of misinformation and cyberbullying, it has also created countless opportunities for 
+connection, collaboration, and community-building.
+
+
+
+
+
+
+
+
+# ============================================================== NON-GUARD ==============================================================
+
+10-09-2025__15:00:01 | WARNING | Some parameters are on the meta device device because they were offloaded to the cpu.
+10-09-2025__15:00:11 | INFO  | [Add] sentence: and the need to be with others is an fundamental aspect of our nature.
+10-09-2025__15:00:27 | INFO  | [Add] sentence: In this context, the Internet can be seen as a tool that allows humans to connect with others, regardless of their geographical location.
+10-09-2025__15:00:31 | INFO  | [EOS] encountered - returning final answer.
+10-09-2025__15:00:31 | INFO  | ======= SUMMARY =======
+10-09-2025__15:00:31 | INFO  | stopped by EOS    :  True
+10-09-2025__15:00:31 | INFO  | Stopped by budget : False
+10-09-2025__15:00:31 | INFO  | Elapsed           : 37.67s
+10-09-2025__15:00:31 | INFO  | Final answer      : Humans are sociable creatures and the need to be with others is an fundamental aspect of our nature.In this context, the Internet can be seen as a tool that allows humans to connect with others, regardless of their geographical location.
+
+=== FINAL ANSWER (CUMULATIVE SCOPE) ===
+Humans are sociable creatures and the need to be with others is an fundamental aspect of our nature.In this context,
+the Internet can be seen as a tool that allows humans to connect with others, regardless of their geographical location.
+
+
+
+
+# ---------------------------------------------------------------------- Try 2 ----------------------------------------------------------------------
+
+16:36:51 | INFO  | ======== SAPLMA Guarded Generation ========
+16:36:51 | INFO  | Prompt            : Humans are sociable creatures
+16:36:51 | INFO  | Base model path   : ../models/Llama-2-7B-Chat-fp16
+16:36:51 | INFO  | Bundle            : ../pretrained_saplma/completion/saplma_checkpoints_LLAMA7/BEST_layer12__heldout_data/capitals
+16:36:51 | INFO  | Layer from end    : -12
+16:36:51 | INFO  | SAPLMA threshold  : 0.4864 (best=0.4864, offset=+0.0000)
+16:36:51 | INFO  | Context window    : 4096
+16:36:51 | INFO  | Decoding          : HYBRID (sample first token each attempt; last retry samples all tokens; top-p=0.80, temp=0.80, keep>=5)
+16:36:51 | INFO  | Classify scope    : CUMULATIVE
+16:36:51 | INFO  | Device            : cuda:0 | dtype=torch.float16
+16:36:51 | INFO  | Limits            : 3 sentences | 512 total tokens | 128 tokens/sentence | 10 retries/sentence
+16:36:51 | INFO  | Filters           : min_len=1 | min_alpha=1 | require_space=True | require_keywords=[] | strip_enum_for_class=True | relax_last=True
+16:36:51 | INFO  | [START]
+16:37:03 | INFO  | [SKIP] '' (too short (<1)) | mode=SAMPLE-ALL
+Curr_sentence to check:  Humans are sociable creatures and we have a natural desire to be part of a group
+16:37:12 | INFO  | [SENTENCE] scope=cumulative | mode=SAMPLE-ALL | text='Humans are sociable creatures and we have a natural desire to be part of a group' | prob_true=0.9568 thr=0.4864 -> ACCEPT
+Curr_sentence to check:  Humans are sociable creatures and we have a natural desire to be part of a group. Here are some of the reasons why we humans are social creatures and why group membership is so important for our wellbeing and happiness:
+16:37:32 | INFO  | [SENTENCE] scope=cumulative | mode=SAMPLE-ALL | text='Humans are sociable creatures and we have a natural desire to be part of a group. Here are some of the reasons why we humans are social creatures and why group membership is so important for our wellbeing and happiness:' | prob_true=0.4141 thr=0.4864 -> REJECT
+Curr_sentence to check:  Humans are sociable creatures and we have a natural desire to be part of a group. This desire can be observed in the way we form friendships, join communities, and participate in social activities
+16:37:46 | INFO  | [SENTENCE] scope=cumulative | mode=SAMPLE-ALL | text='Humans are sociable creatures and we have a natural desire to be part of a group. This desire can be observed in the way we form friendships, join communities, and participate in social activities' | prob_true=0.9016 thr=0.4864 -> ACCEPT
+Curr_sentence to check:  Humans are sociable creatures and we have a natural desire to be part of a group. This desire can be observed in the way we form friendships, join communities, and participate in social activities. Our social connections provide us with a sense of belonging, support, and validation, which are essential for our well-being and happiness
+16:38:05 | INFO  | [SENTENCE] scope=cumulative | mode=SAMPLE-ALL | text='Humans are sociable creatures and we have a natural desire to be part of a group. This desire can be observed in the way we form friendships, join communities, and participate in social activities. Our social connections provide us with a sense of belonging, support, and validation, which are essential for our well-being and happiness' | prob_true=0.8228 thr=0.4864 -> ACCEPT
+16:38:05 | INFO  | [DONE] Max sentences reached.
+16:38:05 | INFO  | ======== SUMMARY ========
+16:38:05 | INFO  | Accepted sentences : 3
+16:38:05 | INFO  | Rejected sentences : 1
+16:38:05 | INFO  | Trivial skips      : 1
+16:38:05 | INFO  | Stopped by EOS     : False
+16:38:05 | INFO  | Stopped by budget  : False
+16:38:05 | INFO  | Elapsed            : 79.67s
+16:38:05 | INFO  | Final answer       : Humans are sociable creatures and we have a natural desire to be part of a group. This desire can be observed in the way we form friendships, join communities, and participate in social activities. Our social connections provide us with a sense of belonging, support, and validation, which are essential for our well-being and happiness.
+
+=== FINAL ANSWER (CUMULATIVE SCOPE) ===
+Humans are sociable creatures and we have a natural desire to be part of a group. This desire can be observed in the 
+way we form friendships, join communities, and participate in social activities. Our social connections provide us with 
+a sense of belonging, support, and validation, which are essential for our well-being and happiness.
+
+# ============================================================== NON-GUARD ==============================================================
+10-09-2025__16:42:18 | INFO  | [SKIP] '3.' Too short, only 0 chars
+10-09-2025__16:42:25 | INFO  | [Add] sentence: and tend to connect and form bonds with other humans.
+10-09-2025__16:42:49 | INFO  | [Add] sentence: In order to do this effectively, you need to have some basic social skills and knowledge of how to communicate and interact with others in a way that is clear, concise and respectful.
+10-09-2025__16:43:01 | INFO  | [SKIP] '' Too short, only 0 chars
+10-09-2025__16:43:26 | INFO  | [SKIP] '' Too short, only 0 chars
+10-09-2025__16:43:52 | INFO  | [SKIP] '' Too short, only 0 chars
+10-09-2025__16:43:54 | INFO  | [SKIP] '' Too short, only 0 chars
+10-09-2025__16:43:56 | INFO  | [EOS] encountered - returning final answer.
+10-09-2025__16:43:56 | INFO  | ======= SUMMARY =======
+10-09-2025__16:43:56 | INFO  | stopped by EOS    :  True
+10-09-2025__16:43:56 | INFO  | Stopped by budget : False
+10-09-2025__16:43:56 | INFO  | Elapsed           : 108.67s
+10-09-2025__16:43:56 | INFO  | Final answer      : Humans are sociable creatures  and tend to connect and form bonds with other humans. In order to do this effectively, you need to have some basic social skills and knowledge of how to communicate and interact with others in a way that is clear, concise and respectful.
+
+=== FINAL ANSWER (CUMULATIVE SCOPE) ===
+Humans are sociable creatures  and tend to connect and form bonds with other humans. In order to do this effectively, you need to have some basic social skills and knowledge of how to communicate and interact with others in a way that is clear, concise and respectful.

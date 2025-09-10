@@ -136,8 +136,8 @@ def _setup_logger(level: str = "INFO"):
 # ---------------------------------------------------------------------------
 def _nucleus_sample(
     next_logits: torch.Tensor,
-    top_p: float = 0.95,
-    temperature: float = 1.1,
+    top_p: float = 0.8,
+    temperature: float = 0.8,
     min_tokens_to_keep: int = 5
 ) -> int:
     """
@@ -165,7 +165,7 @@ def _nucleus_sample(
     Returns
     -------
     int
-        The sampled token ID (int(index) in the model’s vocabulary).
+        The sampled token ID (int(index) in the model's vocabulary).
     """
     if temperature and temperature != 1.0:
         next_logits = next_logits / temperature
@@ -713,7 +713,7 @@ if __name__ == "__main__":
         decode_mode="hybrid",                 # hybrid is truly non-deterministic here
         classification_mode="cumulative",     # Note - If we use "sentence" it has a problem we will get only the generated text (half a sentence).
         cumulative_exclude_prompt=False,
-        max_sentences=5,
+        max_sentences=3,
         retries_per_sentence=10,
         max_new_tokens_total=512,
         max_tokens_per_sentence=128,
