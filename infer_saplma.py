@@ -1,7 +1,8 @@
 from guarded_infer.saplma_api import load_best_bundle, embed_texts_last_token, predict_embeddings
-from paper.config import BASE_MODEL_PATH   # ensure you embed with the same base model used in training
+from instruct_saplma.config import BASE_MODEL_PATH   # ensure you embed with the same base model used in training
 
-BUNDLE = "pretrained_saplma/completion/saplma_checkpoints_LLAMA7/BEST_layer12__heldout_data/capitals"
+# BUNDLE = "pretrained_saplma/completion/saplma_checkpoints_LLAMA7/BEST_layer12__heldout_data/capitals"
+BUNDLE = "pretrained_saplma/instruct/Llama-2-7B-Chat-fp16/format_3/saplma_checkpoints_LLAMA7/ALL_layer12"
 
 model, thr, meta, path = load_best_bundle(bundle=BUNDLE)  # defaults to paper.config
 layer_from_end = int(meta["layer_from_end"])              # use the trained layer

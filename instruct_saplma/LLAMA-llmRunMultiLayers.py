@@ -11,7 +11,7 @@ import pandas as pd
 import numpy as np
 from typing import Dict
 import torch
-from config import BASE_MODEL_PATH, MODEL_NAME, LAYERS_TO_USE, LIST_OF_DATASETS, REMOVE_PERIOD, DATASET_FOLDER, CSV_SUFFIX, FORMAT
+from config import BASE_MODEL_PATH, MODEL_NAME, LAYERS_TO_USE, LIST_OF_DATASETS, REMOVE_PERIOD, DATASET_FOLDER, CSV_SUFFIX, FORMAT, MODEL
 import os
 
 # -----------------------------
@@ -92,17 +92,24 @@ for dataset_to_use in LIST_OF_DATASETS:
             add_generation_prompt=True,
             return_tensors="pt",
             return_dict=True,
-            tokenize=True
+            tokenize=True,
+            skip_special_tokens=True
         ).to(model.device)
 
         # Optionally inspect token IDs before trimming
         # tokens = [tokenizer.convert_ids_to_tokens(x) for x in inputs['input_ids']]
         # print(inputs['input_ids'], " = \n", tokens) 
         
-        # Remove last 2 tokens so the model predicts the continuation instead of starting fresh
-        inputs["input_ids"] = inputs["input_ids"][:, :-2]
-        inputs["attention_mask"] = inputs["attention_mask"][:, :-2]
+        # print("Inputs before: ", inputs["input_ids"], [tokenizer.convert_ids_to_tokens(id) for id in inputs["input_ids"]])
         
+        # For Llama3.2 Remove last 2 tokens so the model predicts the continuation instead of starting fresh for Llama2 Remove 2
+        
+        ignore_last = 2 if MODEL.endswith("Llama-2-7b-chat-hf") else 5
+        inputs["input_ids"] = inputs["input_ids"][:, :-ignore_last]
+        inputs["attention_mask"] = inputs["attention_mask"][:, :-ignore_last]
+        
+        # print("Inputs after: ", inputs["input_ids"], [tokenizer.convert_ids_to_tokens(id) for id in inputs["input_ids"]])
+
         # Optionally inspect token IDs after trimming
         # tokens = [tokenizer.convert_ids_to_tokens(x) for x in inputs['input_ids']]
         # print(inputs['input_ids'], " = \n", tokens) 
@@ -124,6 +131,12 @@ for dataset_to_use in LIST_OF_DATASETS:
         # Extract the generated token ID
         generate_ids = outputs.sequences
         next_id = generate_ids[0][-1].cpu().item()
+
+        # print(generate_ids, [tokenizer.convert_ids_to_tokens(id) for id in generate_ids])
+        # print("The next token id is: ", next_id, tokenizer.convert_ids_to_tokens(next_id))
+        
+        # if i < 10: continue
+        # raise("Stop Here")
 
         # -----------------------------
         # Store Embeddings & Token IDs

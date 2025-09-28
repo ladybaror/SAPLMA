@@ -4,8 +4,9 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, set_seed
 
 PROMPT = "Dogs are loyal and also"
-# MODEL  = "models/Llama-2-7B-Chat-fp16"
-MODEL  = "models/Llama-2-7b-chat-hf"
+MODEL  = "models/Llama-2-7B-Chat-fp16"
+# MODEL  = "models/Llama-2-7b-chat-hf"
+# MODEL = "models/Llama-3.2-1B-Instruct"
 
 # Generation knobs
 MAX_NEW_TOKENS = 80
@@ -87,6 +88,8 @@ def main():
     print("BOS token:", tok.bos_token, "->", tok.bos_token_id)
     print("EOS token:", tok.eos_token, "->", tok.eos_token_id)
     print("PAD token:", tok.pad_token, "->", tok.pad_token_id)
+
+    print(build_prompt_text(tok, [{"role": "assistant", "content": "Humans are good"}], True))
 
     # if tok.pad_token is None:
     #     tok.pad_token = tok.eos_token

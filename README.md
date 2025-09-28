@@ -41,6 +41,31 @@ results:
 |                                      | AUC:     94.33         | AUC:     96.72         | AUC:     96.86         |
 -------------------------------------------------------------------------------------------------------------------
 
+
+
+Fix tables overleaf + text
+
+
+1. train samplma (all) - "tell me true"
+
+
+5 examples instruct - without saplma
+5 examples - guarded
+
+this is the format:
+sentence (format of "user, assistant" with "tell me true"):
+answer without saplma
+answer with
+rejected sentences
+
+
+Notes:
+Im stuck here:
+saplma_guarded_generation_completion_auto_format.py -> line:
+                out = _model_forward_compat(
+
+The model doesn't generate output it is stuck! figure out why!
+
 """
 
 

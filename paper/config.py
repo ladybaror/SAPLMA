@@ -3,8 +3,10 @@
 from pathlib import Path
 
 # ----- Paths -----
-BASE_MODEL_PATH = "models/Llama-2-7B-Chat-fp16"
-DATASET_FOLDER = "data/capital_true_false"
+MODEL = "Llama-2-7B-Chat-fp16"
+# MODEL = "Llama-3.2-1B"
+BASE_MODEL_PATH = f"models/{MODEL}"
+DATASET_FOLDER = f"data/{MODEL}/capital_true_false"
 CSV_SUFFIX = "_true_false.csv"
 
 # ----- Model -----

@@ -1,0 +1,3 @@
+Lie to me
+Tell me something true
+Tell me something false

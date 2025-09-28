@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Build 3x3 acc@0.5 tables (test formats 2/3/4 × train formats 2/3/4)
+Build 3x3 acc@0.5 tables (test formats 2/3/4 x train formats 2/3/4)
 for *each dataset* using the corresponding pretrained bundle.
 
 Assumptions (matched to your screenshots):

@@ -293,9 +293,12 @@ def generate_without_guardrail(
     )
 
 if __name__ == "__main__":
-    PROMPT = "Humans are sociable creatures"
+    PROMPT = "Dogs are loyal and also"
+    # PROMPT = "Humans are sociable creatures"
+    # PROMPT = "The Earth orbits around the Sun"
     
     MODEL  = "../models/Llama-2-7B-Chat-fp16"
+    # MODEL  = "../models/Llama-3.2-1B"
     
     out = generate_without_guardrail(
         prompt=PROMPT,

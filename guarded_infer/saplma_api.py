@@ -17,6 +17,8 @@
 #   predict_texts_chat(...)
 # ------------------------------------------------------------
 
+
+
 from __future__ import annotations
 import json
 import os
@@ -29,6 +31,15 @@ import numpy as np
 import pandas as pd
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
+
+import os
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+
+import tensorflow as tf
+try:
+    tf.config.set_visible_devices([], "GPU")  # keep TF off GPU
+except Exception:
+    pass
 from tensorflow.keras.models import load_model
 
 # Label semantics (1 = True, 0 = Lie)

@@ -121,4 +121,12 @@ python eval_saplma_checkpoint.py \
 #   --out-bundle saplma_tests_results/no_user_model/checkpoints/format_2_test_dataset_results/animals_rep0_bundle
 
 
+
+--------------------------------------------
+python eval_saplma_checkpoint.py \
+  --weights pretrained_saplma/instruct/Llama-3.2-1B-Instruct/format_2/saplma_checkpoints_LLAMA7/tmp_ckpt_layer12_heldout_data/inventions_rep9/weights.keras \
+  --ref-bundle pretrained_saplma/instruct/Llama-3.2-1B-Instruct/format_2/saplma_checkpoints_LLAMA7/BEST_layer12__heldout_data/capitals \
+  --out-bundle pretrained_saplma/instruct/Llama-3.2-1B-Instruct/format_2/saplma_checkpoints_LLAMA7/inventions_rep9_bundle
+
+
 """

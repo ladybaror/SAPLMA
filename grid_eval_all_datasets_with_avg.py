@@ -49,12 +49,14 @@ FMT_LABEL = {
     4: "tell_me_false",  # format 4
 }
 
+
 # Path roots (match your tree)
-DATASET_ROOT = Path("/home/ddn1/Documents/GitHub/SAPLMA/data/capital_true_false_instruct")
+DATASET_ROOT = Path(f"/home/ddn1/Documents/GitHub/SAPLMA/data/Llama-3.2-1B-Instruct/capital_true_false_instruct")
+
 EMB_DIRNAME  = "embeddings_with_labels_data"
 CSV_SUFFIX   = "LLAMA7_12_rmv_period.csv"   # same for all datasets in your screenshot
 
-BUNDLE_ROOT  = Path("pretrained_saplma/instruct")
+BUNDLE_ROOT  = Path("pretrained_saplma/instruct/Llama-3.2-1B-Instruct")
 BUNDLE_MID   = "saplma_checkpoints_LLAMA7"
 BUNDLE_SUFFIX = "rep9_bundle"               # change if you use another replica
 

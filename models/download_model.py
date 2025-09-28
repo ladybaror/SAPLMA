@@ -7,7 +7,7 @@ from huggingface_hub import snapshot_download
 
 from private_keys.keys import Keys
 
-model_name = "Llama-2-7b-chat-hf"
+model_name = "Llama-3.2-1B-Instruct"
 model_path = f"meta-llama/{model_name}"
 
 
