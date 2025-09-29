@@ -2,10 +2,20 @@
 # ---------------------------------------------------------------------------
 # Guardrailed generation with SAPLMA (Simple Accuracy Prediction via Last-token
 # Model Activation) for sentence-by-sentence filtering, template-friendly.
-# - Loads the HF model first (Torch on GPU), pins TensorFlow (Keras) to CPU.
-# - Reuses (caches) the tokenizer/model and SAPLMA bundle across calls.
-# - Does NOT echo the user prompt into the assistant output.
-# - Optional stricter acceptance: require terminal punctuation and drop fragments.
+#
+# This revision:
+# - Uses a sentence tokenizer (spaCy -> NLTK -> regex fallback) to detect
+#   sentence boundaries (no '\n' or raw punctuation hacks).
+# - Caches HF model/tokenizer, SAPLMA bundle, and the sentence tokenizer.
+# - No prompt echo in assistant output.
+# - Strong first-token hygiene (resample fragmenty first token).
+# - Bans newline as a first token.
+# - No automatic capitalization; model controls casing.
+# - Avoid leading space on the very first append to final_text.
+# - Ignores empty/newline-only “sentences”.
+# - **Important fix**: strip trailing EOS from accepted_ids **after every** re-render.
+# - **NEW**: strip trailing whitespace tokens (e.g., SentencePiece '▁') from accepted_ids.
+# - **NEW**: optional `saplma_threshold` parameter to override the bundle’s threshold.
 # ---------------------------------------------------------------------------
 
 from __future__ import annotations
@@ -13,19 +23,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Set, List, Tuple, Dict
 import copy
-import logging, time, re, os, sys
+import logging
+import time
+import re
+import os
+import sys
 from inspect import signature
 
 import torch
 import torch.nn.functional as F
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-# Keep TF logs quiet if it ends up imported anywhere early.
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
-
-# If your saplma_api is in a parent folder, keep this path tweak:
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 
 # =========================
 # Module-level singletons
@@ -37,21 +47,23 @@ _MODEL_PATH = None
 _SAPLMA = None  # (saplma_model, embed_fn, layer_from_end, thr_opt_base)
 _BUNDLE_PATH = None
 
+_SENT_TOK = None  # sentence tokenizer singleton
+
 
 # ---------------------------------------------------------------------------
-# Dataclasses for detailed outputs
+# Dataclasses
 # ---------------------------------------------------------------------------
 @dataclass
 class SAPLMARejected:
-    type: str                     # "filter" | "saplma" | "runon"
-    attempt: int                  # which attempt (0-based)
-    mode: str                     # "GREEDY" | "SAMPLE"
-    sentence_out: str             # exact punctuated sentence model produced (maybe partial on runon)
-    clean_sentence: str           # whitespace-normalized sentence used for filters
-    classify_text: str            # full rendered chat-template string fed to SAPLMA
-    prob_true: float | None       # SAPLMA probability (None for filter/runon)
-    threshold: float | None       # threshold used (None for filter/runon)
-    reason: str | None            # e.g., "too short", "prob<thr", "exceeded max_tokens_per_sentence"
+    type: str
+    attempt: int
+    mode: str
+    sentence_out: str
+    clean_sentence: str
+    classify_text: str
+    prob_true: float | None
+    threshold: float | None
+    reason: str | None
 
 @dataclass
 class GuardedGenerationResult:
@@ -112,16 +124,19 @@ NUM_RE    = re.compile(r"^\s*[\d\W_]+\s*$")
 WIKI_RE   = re.compile(r"Asked by Wiki User|Trivia Questions", re.IGNORECASE)
 
 def _leading_fragment_reason(s: str) -> Optional[str]:
-    """Detect obvious leading fragments like “’s ...” or single-letter splits (“t here ...”)."""
+    """
+    Detect obvious leading fragments like “'s ...” or one-letter splits (“t here ...”).
+    Unicode-aware: treat any single-letter token (except I/A) followed by space+word as a fragment.
+    """
     s_stripped = s.lstrip()
     if not s_stripped:
         return None
-    # "'s ..." or "’s ..." at start
-    if re.match(r"^[’']s\b", s_stripped):
+    if re.match(r"^[’']s\b", s_stripped):  # "'s" or "’s"
         return "leading fragment ('s)"
-    # single-letter + space + word (avoid real words 'I ' and 'A ')
-    if re.match(r"^[a-zA-Z]\b\s+\w", s_stripped):
-        if not re.match(r"^[IA]\b\s", s_stripped):  # allow "I am", "A cat"
+    # first token (Unicode-safe)
+    first_token = s_stripped.split(None, 1)[0]
+    if len(first_token) == 1 and first_token.isalpha() and first_token.upper() not in ("I", "A"):
+        if re.match(r"^\S+\s+\w", s_stripped):
             return "leading fragment (single-letter split)"
     return None
 
@@ -131,6 +146,7 @@ def _reject_reason(
     min_chars: int,
     min_alpha_chars: int,
     require_keywords: Optional[List[str]],
+    allow_short_no_space_len: int = 8,  # allow "Sure.", "Indeed." etc.
 ) -> Optional[str]:
     s_stripped = s.strip()
     if PUNC_RE.match(s_stripped):                  return "only punctuation"
@@ -143,7 +159,13 @@ def _reject_reason(
     if len(s_stripped) < min_chars:                return f"too short (<{min_chars})"
     alpha = sum(ch.isalpha() for ch in s_stripped)
     if alpha < min_alpha_chars:                    return f"too few letters (<{min_alpha_chars})"
-    if require_space and (" " not in s_stripped):  return "no space"
+
+    if require_space and (" " not in s_stripped):
+        # allow short interjections with terminal punctuation
+        if len(s_stripped) <= allow_short_no_space_len and s_stripped.endswith(('.', '!', '?')):
+            pass
+        else:
+            return "no space"
 
     if require_keywords:
         s_low = s_stripped.lower()
@@ -157,57 +179,208 @@ def _strip_trailing_period(s: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# HF forward-compat and EOS trim
+# HF forward-compat and EOS/space trimming
 # ---------------------------------------------------------------------------
 def _strip_trailing_eos(ids: List[int], eos_id: int) -> List[int]:
-    """Remove 1+ trailing EOS tokens from a token id list."""
     j = len(ids)
     while j > 0 and ids[j-1] == eos_id:
         j -= 1
     return ids[:j]
 
+def _strip_trailing_space_tokens(ids: List[int], tok: AutoTokenizer) -> List[int]:
+    """
+    Remove trailing tokens that decode to only whitespace (spaces, newlines, tabs).
+    This trims SentencePiece '▁' (U+2581) and similar artifacts that decode as ' '.
+    """
+    j = len(ids)
+    while j > 0:
+        piece = tok.decode([ids[j-1]], skip_special_tokens=True)
+        # Treat empty decode as removable too (some control-like tokens may decode to "")
+        if piece == "" or piece.isspace():
+            j -= 1
+            continue
+        break
+    return ids[:j]
+
 def _model_forward_compat(mdl, **kwargs):
-    """
-    Call model.forward with only supported kwargs.
-    Works across HF variants (including ones with new cache APIs).
-    """
     sig = signature(mdl.forward)
     filtered = {k: v for k, v in kwargs.items() if k in sig.parameters and v is not None}
     return mdl(**filtered)
 
+def _newline_token_ids(tok: AutoTokenizer) -> Set[int]:
+    """Collect token IDs that represent pure newline sequences, to ban as first token."""
+    s: Set[int] = set()
+    for seq in ("\n", "\r\n", "\n\n"):
+        s.update(tok.encode(seq, add_special_tokens=False))
+    return s
+
 
 # ---------------------------------------------------------------------------
-# Helpers for chat template usage
+# Sentence tokenizer (spaCy -> NLTK -> regex, no look-behind)
+# ---------------------------------------------------------------------------
+class SentenceTokenizer:
+    _ABBREV = {
+        "mr","mrs","ms","dr","prof","sr","jr","st","vs","etc",
+        "e.g","i.e","u.s","u.k","no","fig","dept","inc","ltd",
+        "jan","feb","mar","apr","jun","jul","aug","sep","sept",
+        "oct","nov","dec",
+    }
+
+    # NEW: helpers to avoid treating list markers as sentences
+    _ENUM_LINE_RE = re.compile(r"^\s*\d{1,4}(?:[.)])\s*$")
+    _COLON_ENUM_BLOCK_RE = re.compile(
+        r"^(.*?:)\s*(?:\r?\n){1,}\s*\d{1,4}(?:[.)])\s*$",
+        re.DOTALL,
+    )
+
+    def __init__(self, lang: str = "en"):
+        self.backend = "regex"
+        self.lang = lang
+        self._nlp = None
+        self._nltk_sent_tokenize = None
+        try:
+            import spacy
+            import nltk
+
+            try:
+                nlp = spacy.load(f"{lang}_core_web_sm",
+                                 disable=["ner","lemmatizer","textcat","tok2vec"])
+                if "parser" not in nlp.pipe_names and "senter" not in nlp.pipe_names:
+                    if "sentencizer" not in nlp.pipe_names:
+                        nlp.add_pipe("sentencizer")
+            except Exception:
+                nlp = spacy.blank(lang)
+                if "sentencizer" not in nlp.pipe_names:
+                    nlp.add_pipe("sentencizer")
+            self._nlp = nlp
+            self.backend = "spacy"
+        except Exception:
+            try:
+                from nltk.tokenize import sent_tokenize
+                self._nltk_sent_tokenize = sent_tokenize
+                self.backend = "nltk"
+            except Exception:
+                self.backend = "regex"
+
+    def _is_abbrev_before(self, text: str, dot_idx: int) -> bool:
+        j = dot_idx - 1
+        while j >= 0 and text[j].isspace(): j -= 1
+        k = j
+        while k >= 0 and (text[k].isalpha() or text[k] == "."): k -= 1
+        token = text[k+1:j+1]
+        if not token: return False
+        token_norm = token.strip().lower().rstrip(".")
+        if not token_norm: return False
+        if len(token_norm) == 1 and token.endswith("."):  # e.g., "A."
+            return True
+        return token_norm in self._ABBREV
+
+    def _postfix_enumeration_rules(self, candidate: str) -> str | None:
+        """
+        Apply two fixes:
+          - If candidate is exactly a numeric list marker (e.g., '1.'), it's NOT a full sentence -> return None.
+          - If candidate looks like '...:\n\n1.' keep only the part before the colon.
+        """
+        s = candidate.strip()
+        if self._ENUM_LINE_RE.match(s):
+            return None
+        m = self._COLON_ENUM_BLOCK_RE.match(s)
+        if m:
+            return m.group(1).strip()
+        return s  # unchanged
+
+    def _regex_first_complete(self, text: str) -> Optional[str]:
+        if not text:
+            return None
+
+        # ALSO allow colon+newline as terminator BEFORE scanning for . ! ?
+        m_colon = re.search(r":\s*(?:\r?\n)", text)
+        if m_colon:
+            # everything up to the colon is a complete sentence
+            cand = text[:m_colon.start()+1].strip()
+            fixed = self._postfix_enumeration_rules(cand)
+            return fixed if fixed else None
+
+        n = len(text)
+        for i, ch in enumerate(text):
+            if ch not in (".", "!", "?"):
+                continue
+            if ch == "." and self._is_abbrev_before(text, i):
+                continue
+
+            end = i + 1
+            while end < n and text[end] in "\"')]}":
+                end += 1
+            if end >= n or text[end].isspace():
+                cand = text[:end].strip()
+                fixed = self._postfix_enumeration_rules(cand)
+                if fixed:
+                    return fixed
+        # If text ends with sentence punctuation, fall back as before
+        if re.search(r"[.!?][\"')\]]*\s*$", text):
+            cand = text.strip()
+            fixed = self._postfix_enumeration_rules(cand)
+            return fixed if fixed else None
+        return None
+
+    def first_complete(self, text: str) -> Optional[str]:
+        if not text:
+            return None
+
+        if self.backend == "spacy":
+            doc = self._nlp(text)
+            sents = list(doc.sents)
+            if not sents:
+                return None
+            if len(sents) > 1:
+                cand = sents[0].text.strip()
+                fixed = self._postfix_enumeration_rules(cand)
+                return fixed if fixed else None
+            first = sents[0].text
+            if re.search(r"[.!?][\"')\]]*\s*$", first) or re.search(r":\s*(?:\r?\n)", first):
+                cand = first.strip()
+                fixed = self._postfix_enumeration_rules(cand)
+                return fixed if fixed else None
+            return None
+
+        if self.backend == "nltk":
+            sents = self._nltk_sent_tokenize(text)
+            if not sents:
+                return None
+            if len(sents) > 1:
+                cand = sents[0].strip()
+                fixed = self._postfix_enumeration_rules(cand)
+                return fixed if fixed else None
+            first = sents[0]
+            if re.search(r"[.!?][\"')\]]*\s*$", first) or re.search(r":\s*(?:\r?\n)", first):
+                cand = first.strip()
+                fixed = self._postfix_enumeration_rules(cand)
+                return fixed if fixed else None
+            return None
+
+        return self._regex_first_complete(text)
+
+
+# ---------------------------------------------------------------------------
+# Chat template helpers
 # ---------------------------------------------------------------------------
 def _render_for_generation(tok: AutoTokenizer, messages: List[Dict]) -> List[int]:
-    """
-    Render chat messages to input_ids ready for generation.
-    add_generation_prompt=True appends the template's 'assistant:' cue so the model
-    continues the assistant turn.
-    """
     return tok.apply_chat_template(
         messages,
         add_generation_prompt=True,
         return_tensors="pt",
-    )[0].tolist()  # shape [T]
+    )[0].tolist()
 
 def _render_for_classification(tok: AutoTokenizer, messages_prefix: List[Dict], assistant_text: str) -> str:
-    """
-    Render a *complete* chat sample (no generation prompt) whose last token should be
-    the end of the assistant_text. We return a STRING so the SAPLMA embedder can
-    tokenize it the same way as the base model.
-    """
     msgs = copy.deepcopy(messages_prefix)
-    # Ensure there is an assistant turn
     if not msgs or msgs[-1].get("role") != "assistant":
         msgs.append({"role": "assistant", "content": assistant_text})
     else:
         msgs[-1]["content"] = assistant_text
-
     rendered = tok.apply_chat_template(
         msgs,
-        add_generation_prompt=False,  # full completed assistant text
-        tokenize=False,               # return str (not ids); embedder will tokenize
+        add_generation_prompt=False,
+        tokenize=False,
     )
     return rendered
 
@@ -249,15 +422,10 @@ def _get_model_and_tokenizer(
     return tok, mdl
 
 def _get_saplma(bundle_path: str, log: logging.Logger):
-    """
-    Returns (saplma_model, embed_text_last_token_with_loaded_model, layer_from_end, thr_opt_base).
-    Pins TF to CPU on first load.
-    """
     global _SAPLMA, _BUNDLE_PATH
     if _SAPLMA is not None and _BUNDLE_PATH == bundle_path:
         return _SAPLMA
 
-    # Pin TensorFlow to CPU (no visible GPUs) and import lazily
     import tensorflow as tf
     try:
         tf.config.set_visible_devices([], "GPU")
@@ -276,6 +444,34 @@ def _get_saplma(bundle_path: str, log: logging.Logger):
 
 
 # ---------------------------------------------------------------------------
+# First-token hygiene helpers
+# ---------------------------------------------------------------------------
+def _bad_first_piece(piece: str) -> bool:
+    s = piece.lstrip()
+    if not s:
+        return True
+    # reject pure newline(s)
+    if s[:1] in ("\n", "\r"):
+        return True
+    # "'s" or "’s"
+    if re.match(r"^[’']s\b", s):
+        return True
+    # a lone ASCII punctuation
+    if re.match(r"^[,:;)\]]$", s):
+        return True
+    # single-letter (except I/A), e.g., "t"
+    if len(s) == 1 and s.isalpha() and s.upper() not in ("I", "A"):
+        return True
+    # odd non-ASCII leading letter (e.g., 'Љ')
+    if s and not s[0].isascii() and s[0].isalpha():
+        return True
+    # runs of only punctuation-ish tokens
+    if re.match(r"^[\.\!\?\-\–\—\'\"]+$", s):
+        return True
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Core generation loop
 # ---------------------------------------------------------------------------
 @torch.no_grad()
@@ -286,13 +482,13 @@ def generate_with_saplma_guardrail(
 
     # Decoding policy
     decode_mode: str = "hybrid",     # {"greedy","hybrid"}
-    temperature: float = 0.8,
+    temperature: float = 1.1,
     top_p: float = 0.8,
     min_tokens_to_keep: int = 5,
 
     # Classification scope
     classification_mode: str = "sentence",  # {"sentence","cumulative"}
-    cumulative_exclude_prompt: bool = False,  # kept for API compat; no-op with new prompt handling
+    cumulative_exclude_prompt: bool = False,  # compat; no prompt echo now
     strip_enumeration_for_class: bool = True,
 
     # SAPLMA input normalization
@@ -314,11 +510,11 @@ def generate_with_saplma_guardrail(
     relax_filters_on_last_retry: bool = True,
 
     # Acceptance strictness
-    require_terminal_punct: bool = False,       # require . ! ? at end of sentence
-    reject_leading_fragments: bool = True,      # drop "'s ..." and "t here ..." style starts
+    reject_leading_fragments: bool = True,     # drop "'s ..." and single-letter split starts
 
-    # SAPLMA threshold tweak
-    threshold_offset: float = 0.0,
+    # SAPLMA threshold controls
+    threshold_offset: float = 0.0,             # additive offset to bundle's optimal threshold
+    saplma_threshold: Optional[float] = None,  # NEW: if provided, overrides (clamped to [0,1])
 
     # System
     device: str = "auto",
@@ -329,6 +525,12 @@ def generate_with_saplma_guardrail(
 
     # Optional memory cap during HF load (e.g., {"cuda:0": "70%"})
     max_memory: Optional[Dict[str, str]] = None,
+
+    # First-token resampling cap
+    first_token_max_resamples: int = 5,
+
+    # Optional debug: log token traces at DEBUG level
+    debug_token_trace: bool = False,
 ) -> str | GuardedGenerationResult:
     if decode_mode not in ("greedy", "hybrid"):
         raise ValueError("decode_mode must be 'greedy' or 'hybrid'")
@@ -338,39 +540,54 @@ def generate_with_saplma_guardrail(
     log = _setup_logger(log_level)
     t0 = time.time()
 
-    # ---------------- Load / reuse tokenizer & model (Torch on GPU) ----------------
+    # -- Load / reuse tokenizer & model
     torch_dtype = torch.float16 if torch.cuda.is_available() and device != "cpu" else torch.float32
     tok, mdl = _get_model_and_tokenizer(model_path, device, torch_dtype, max_memory, log)
 
     cfg_max_ctx = getattr(mdl.config, "max_position_embeddings", 4096)
     eos_id = tok.eos_token_id
+    NL_IDS = _newline_token_ids(tok)
 
-    # ---------------- Load / reuse SAPLMA bundle (TF on CPU) ----------------
+    # -- Load / reuse SAPLMA bundle
     saplma_model, embed_text_last_token_with_loaded_model, layer_from_end, thr_opt_base = _get_saplma(bundle_path, log)
-    thr_use = float(min(max(thr_opt_base + float(threshold_offset), 0.0), 1.0))
 
-    # ---------------- Build chat messages (do NOT echo prompt) ----------------
-    accepted_text = ""  # assistant's running content only
+    # -- Threshold selection (override wins; else base+offset), both clamped to [0,1]
+    if saplma_threshold is not None:
+        thr_use = float(min(max(float(saplma_threshold), 0.0), 1.0))
+        log.info("SAPLMA threshold  : %.4f (override provided; base=%.4f, offset=%+.4f ignored)",
+                 thr_use, thr_opt_base, float(threshold_offset))
+    else:
+        thr_use = float(min(max(thr_opt_base + float(threshold_offset), 0.0), 1.0))
+        log.info("SAPLMA threshold  : %.4f (base=%.4f, offset=%+.4f)",
+                 thr_use, thr_opt_base, float(threshold_offset))
+
+    # -- Build chat messages (no prompt echo)
+    accepted_text = ""  # assistant-only running content
     messages = [
         {"role": "user", "content": prompt},
         {"role": "assistant", "content": accepted_text},
     ]
-    messages_prefix = copy.deepcopy(messages)  # for classification rendering
+    messages_prefix = copy.deepcopy(messages)
 
-    # ---------------- Diagnostics header ----------------
+    # -- Sentence tokenizer (reuse across calls)
+    global _SENT_TOK
+    if _SENT_TOK is None:
+        _SENT_TOK = SentenceTokenizer(lang="en")
+    sent_tok = _SENT_TOK
+    log.info("Sentence tokenizer backend: %s", sent_tok.backend)
+
+    # -- Diagnostics
     log.info("======== SAPLMA Guarded Generation ========")
     log.info("Prompt            : %s", prompt)
     log.info("Base model path   : %s", model_path)
     log.info("Bundle            : %s", bundle_path)
     log.info("Layer from end    : %d", layer_from_end)
-    log.info("SAPLMA threshold  : %.4f (base=%.4f, offset=%+.4f)", thr_use, thr_opt_base, float(threshold_offset))
     log.info("Context window    : %d", cfg_max_ctx)
-    log.info("Decoding          : %s", "GREEDY" if decode_mode=="greedy" else "HYBRID (sample first token; mid greedy; last retry sampled)")
-    log.info("Device            : %s | dtype=%s", str(next(mdl.parameters()).device), str(torch_dtype))
+    log.info("Decoding          : %s", "GREEDY" if decode_mode=="greedy" else "HYBRID")
     log.info("Limits            : %d sentences | %d total tokens | %d tokens/sentence | %d retries/sentence",
              max_sentences, max_new_tokens_total, max_tokens_per_sentence, retries_per_sentence)
 
-    # ---------------- State ----------------
+    # -- State
     accepted_tokens_total = 0
     sentences_accepted = 0
     sentences_rejected = 0
@@ -379,16 +596,24 @@ def generate_with_saplma_guardrail(
     stopped_by_budget = False
 
     accepted_ids = _render_for_generation(tok, messages)
-    accepted_ids = _strip_trailing_eos(accepted_ids, eos_id)
+    accepted_ids = _strip_trailing_eos(accepted_ids, eos_id)            # ensure no EOS in starting context
+    accepted_ids = _strip_trailing_space_tokens(accepted_ids, tok)      # NEW: ensure no trailing space-tokens
 
-    SENT_END_CHARS = (".", "!", "?")
     banned_starts: Set[int] = set()
     banned_pairs: Set[Tuple[int, int]] = set()
 
     rejected_events: List[SAPLMARejected] = []
     accepted_sentences_list: List[str] = []
 
-    # ---------------- Main loop over sentences ----------------
+    TRIVIAL_REASONS = (
+        "only punctuation",
+        "too short",
+        "no space",
+        "numeric or non-alphabetic",
+        "no terminal punctuation",
+    )
+
+    # -- Main loop
     for s_idx in range(max_sentences):
         accepted_this_sentence = False
 
@@ -398,6 +623,7 @@ def generate_with_saplma_guardrail(
             first_token_id: Optional[int] = None
             first_bigram: Optional[Tuple[int, int]] = None
             last_attempt_full_sample = (decode_mode == "hybrid" and attempt == retries_per_sentence - 1)
+            first_piece_resamples = 0
 
             while True:
                 if accepted_tokens_total + cur_tokens >= max_new_tokens_total:
@@ -414,6 +640,12 @@ def generate_with_saplma_guardrail(
 
                 # Build context (accepted_ids + in-progress sentence)
                 ctx_ids = accepted_ids + cur_ids
+
+                # Debug token traces (optional)
+                if debug_token_trace and cur_tokens == 0:
+                    log.debug("CTX(tokens): %s | INPROG: %s",
+                              tok.convert_ids_to_tokens(accepted_ids),
+                              tok.convert_ids_to_tokens(cur_ids))
                 if len(ctx_ids) > (cfg_max_ctx - 1):
                     ctx_ids = ctx_ids[-(cfg_max_ctx - 1):]
 
@@ -436,25 +668,48 @@ def generate_with_saplma_guardrail(
                         if t1 == first_token_id:
                             next_logits[t2] = float("-inf")
 
-                # Choose next token (hybrid)
-                if decode_mode == "greedy":
-                    mode = "GREEDY"
-                    next_id = int(torch.argmax(next_logits))
-                else:
-                    if last_attempt_full_sample or cur_tokens == 0:
-                        mode = "SAMPLE"
-                        next_id = _nucleus_sample(
+                # NEW: don't start a sentence with a bare newline token
+                if cur_tokens == 0 and NL_IDS:
+                    for _id in NL_IDS:
+                        next_logits[_id] = float("-inf")
+
+                # Choose next token:
+                # - Always SAMPLE the *first* token; resample if the piece looks fragmenty
+                if cur_tokens == 0:
+                    mode = "SAMPLE"
+                    candidate_id = _nucleus_sample(
+                        next_logits, top_p=top_p, temperature=temperature,
+                        min_tokens_to_keep=min_tokens_to_keep
+                    )
+                    while first_piece_resamples < first_token_max_resamples:
+                        piece = tok.decode([candidate_id], skip_special_tokens=True)
+                        if not _bad_first_piece(piece):
+                            break
+                        candidate_id = _nucleus_sample(
                             next_logits, top_p=top_p, temperature=temperature,
                             min_tokens_to_keep=min_tokens_to_keep
                         )
-                    else:
+                        first_piece_resamples += 1
+                    next_id = candidate_id
+                else:
+                    if decode_mode == "greedy":
                         mode = "GREEDY"
                         next_id = int(torch.argmax(next_logits))
+                    else:
+                        if last_attempt_full_sample:
+                            mode = "SAMPLE"
+                            next_id = _nucleus_sample(
+                                next_logits, top_p=top_p, temperature=temperature,
+                                min_tokens_to_keep=min_tokens_to_keep
+                            )
+                        else:
+                            mode = "GREEDY"
+                            next_id = int(torch.argmax(next_logits))
 
                 if cur_tokens == 0:
                     first_token_id = next_id
 
-                # EOS -> finish immediately
+                # EOS -> finish
                 if next_id == eos_id:
                     eos_early = True
                     log.info("[EOS] encountered - returning final answer.")
@@ -471,72 +726,36 @@ def generate_with_saplma_guardrail(
                 cur_tokens += 1
                 accepted_tokens_total += 1
 
-                if (cur_tokens % 16) == 0:
-                    piece = tok.decode([next_id], skip_special_tokens=True)
-                    log.debug("[t=%d] last_token=%r ...", cur_tokens, piece)
-
                 if cur_tokens == 2 and first_token_id is not None:
                     first_bigram = (first_token_id, next_id)
 
-                # Check for sentence boundary on the *newly generated* text
+                # ---- Sentence boundary detection via tokenizer ----
                 cur_text = tok.decode(cur_ids, skip_special_tokens=True)
-                end_found = any(ch in cur_text for ch in SENT_END_CHARS) or cur_text.rstrip().endswith("\n")
-                if end_found:
-                    # Trim to earliest boundary
-                    cut_pos = len(cur_text)
-                    for ch in SENT_END_CHARS:
-                        p = cur_text.find(ch)
-                        if p != -1:
-                            cut_pos = min(cut_pos, p + 1)
-                    npos = cur_text.find("\n")
-                    if npos != -1:
-                        cut_pos = min(cut_pos, npos)
+                sentence_out = sent_tok.first_complete(cur_text)
 
-                    sentence_out = cur_text[:cut_pos]
+                # Debug: sentence chunk detection
+                # print("sentence_out: ", sentence_out)e
+
+                if sentence_out is not None:
                     clean_sentence = " ".join(sentence_out.replace("\n", " ").split()).strip()
 
-                    # Optional: require terminal punctuation (avoid heading lines that end with ':')
-                    if require_terminal_punct and not re.search(r"[.!?]\s*$", clean_sentence):
-                        reason = "no terminal punctuation"
-                        rejected_events.append(SAPLMARejected(
-                            type="filter",
-                            attempt=attempt,
-                            mode=mode,
-                            sentence_out=sentence_out,
-                            clean_sentence=clean_sentence,
-                            classify_text="",
-                            prob_true=None,
-                            threshold=None,
-                            reason=reason
-                        ))
-                        trivial_skips += 1
-                        if first_token_id is not None:
-                            banned_starts.add(first_token_id)
-                        if first_bigram is not None:
-                            banned_pairs.add(first_bigram)
-                        break  # retry the sentence
-
-                    # Build assistant content to classify
+                    # Build classification content
                     if classification_mode == "sentence":
                         cls_content = clean_sentence
                     else:
-                        # cumulative over assistant content only (prompt is not echoed)
                         cls_content = (accepted_text + ("" if accepted_text.endswith((" ", "\n")) or clean_sentence.startswith(" ")
                                                         else " ") + clean_sentence)
 
-                    # Optional normalization on assistant content before rendering
                     if strip_enumeration_for_class:
                         cls_content = ENUM_PREFIX_RE.sub("", cls_content).strip()
                     if classify_strip_trailing_period:
                         cls_content = _strip_trailing_period(cls_content)
 
-                    # Render full chat string for SAPLMA (NO generation prompt)
                     classify_text_str = _render_for_classification(tok, messages_prefix, cls_content)
 
-                    # ---------------- Content filters on NEW sentence only ----------------
+                    # Content filters on NEW sentence
                     to_filter = ENUM_PREFIX_RE.sub("", clean_sentence).strip() if strip_enumeration_for_class else clean_sentence
 
-                    # Extra leading-fragment check (before main filters)
                     if reject_leading_fragments:
                         frag_reason = _leading_fragment_reason(to_filter)
                         if frag_reason:
@@ -552,11 +771,9 @@ def generate_with_saplma_guardrail(
                                 reason=frag_reason
                             ))
                             trivial_skips += 1
-                            if first_token_id is not None:
-                                banned_starts.add(first_token_id)
                             if first_bigram is not None:
                                 banned_pairs.add(first_bigram)
-                            break  # retry the sentence
+                            break
 
                     reason = _reject_reason(
                         to_filter,
@@ -566,14 +783,12 @@ def generate_with_saplma_guardrail(
                         require_keywords=require_keywords,
                     )
 
-                    # Optionally relax some filters on the last retry
-                    if reason and relax_filters_on_last_retry and (decode_mode == "hybrid") and last_attempt_full_sample:
+                    # Relax some filters on last retry
+                    if reason and relax_filters_on_last_retry and last_attempt_full_sample:
                         if reason.startswith("too short") or reason == "no space":
-                            log.debug("[RELAX] Overriding filter '%s' on last retry.", reason)
                             reason = None
 
                     if reason:
-                        # Record filter rejection
                         rejected_events.append(SAPLMARejected(
                             type="filter",
                             attempt=attempt,
@@ -586,36 +801,48 @@ def generate_with_saplma_guardrail(
                             reason=reason
                         ))
                         trivial_skips += 1
-                        if first_token_id is not None:
+                        trivial = reason.startswith(TRIVIAL_REASONS)
+                        if first_token_id is not None and not trivial:
                             banned_starts.add(first_token_id)
-                        if first_bigram is not None:
+                        if first_bigram is not None and not trivial:
                             banned_pairs.add(first_bigram)
-                        break  # retry the sentence
+                        break
 
-                    # ---------------- SAPLMA classification ----------------
+                    # ---- SAPLMA classification ----
                     emb = embed_text_last_token_with_loaded_model(tok, mdl, classify_text_str,
                                                                   layer_from_end, max_length=cfg_max_ctx)
                     X = emb.unsqueeze(0).cpu().numpy().astype("float32")
-
-                    # Keras/TensorFlow is on CPU; predict -> probability scalar
                     prob_true = float(saplma_model.predict(X, verbose=0).ravel()[0])
+
                     is_true = prob_true > thr_use
 
+                    # Console + log for visibility
+                    print(f"[SENTENCE] scope={classification_mode} | mode={mode} | prob_true={prob_true:.4f} thr={thr_use:.4f} -> {'ACCEPT' if is_true else 'REJECT'}")
                     log.info("[SENTENCE] scope=%s | mode=%s | prob_true=%.4f thr=%.4f -> %s",
                              classification_mode, mode, prob_true, thr_use,
                              "ACCEPT" if is_true else "REJECT")
 
                     if is_true:
-                        # Append the ORIGINAL (punctuated) sentence to assistant content
-                        to_add = sentence_out if accepted_text.endswith((" ", "\n")) or sentence_out.startswith(" ") else " " + sentence_out
-                        accepted_text += to_add
-                        # Update chat messages and re-render base context for next sentence
+                        # Append to final text without adding a leading space at the start.
+                        out_to_add = sentence_out
+                        if accepted_text:
+                            if not out_to_add.startswith((" ", "\n")):
+                                accepted_text += " " + out_to_add
+                            else:
+                                accepted_text += out_to_add
+                        else:
+                            accepted_text += out_to_add.lstrip()
+
                         messages[-1]["content"] = accepted_text
-                        messages_prefix[-1]["content"] = ""  # classification always overwrites with cls_content
+                        messages_prefix[-1]["content"] = ""
+
                         accepted_ids = _render_for_generation(tok, messages)
+                        accepted_ids = _strip_trailing_eos(accepted_ids, eos_id)       # keep EOS out
+                        accepted_ids = _strip_trailing_space_tokens(accepted_ids, tok) # NEW: trim trailing '▁'/whitespace
+
                         sentences_accepted += 1
                         accepted_this_sentence = True
-                        accepted_sentences_list.append(sentence_out)
+                        accepted_sentences_list.append(out_to_add.strip())
                     else:
                         sentences_rejected += 1
                         rejected_events.append(SAPLMARejected(
@@ -633,9 +860,9 @@ def generate_with_saplma_guardrail(
                             banned_starts.add(first_token_id)
                         if first_bigram is not None:
                             banned_pairs.add(first_bigram)
-                    break  # accepted or rejected
+                    break  # handled a sentence (accepted or rejected)
 
-                # Guard against excessively long run-ons
+                # Guard against run-ons
                 if cur_tokens >= max_tokens_per_sentence:
                     sentences_rejected += 1
                     log.info("[RETRY] sentence exceeded max_tokens_per_sentence=%d -> reject & retry | mode=%s",
@@ -655,10 +882,10 @@ def generate_with_saplma_guardrail(
                         banned_starts.add(first_token_id)
                     if first_bigram is not None:
                         banned_pairs.add(first_bigram)
-                    break  # retry with a new opening
+                    break  # retry with new opening
 
             if accepted_this_sentence:
-                break  # proceed to next sentence
+                break  # next sentence
 
         if not accepted_this_sentence:
             log.warning("[GIVEUP] Could not produce an acceptable sentence after %d attempts.", retries_per_sentence)
@@ -717,9 +944,9 @@ def _finish(text: str, log: logging.Logger, t0: float,
     )
 
 
-# Example runner (manual)
+# Example manual run
 if __name__ == "__main__":
-    PROMPT = "Tell me something true about France"
+    PROMPT = "Tell me some true facts about France."
     MODEL  = "../models/Llama-2-7b-chat-hf"
     BUNDLE = "../pretrained_saplma/instruct/format_3/saplma_checkpoints_LLAMA7/BEST_layer12__heldout_data/capitals"
 
@@ -736,19 +963,17 @@ if __name__ == "__main__":
         min_sentence_chars=5,
         min_alpha_chars=3,
         require_space_in_sentence=True,
-        require_terminal_punct=True,      # stricter; avoids heading lines ending with ':'
-        reject_leading_fragments=True,    # drop "'s ..." or "t here ..." starts
-        strip_enumeration_for_class=True,
-        classify_strip_trailing_period=True,
         top_p=0.8,
         temperature=0.8,
         min_tokens_to_keep=5,
         relax_filters_on_last_retry=True,
-        threshold_offset=0.0,
+        threshold_offset=0.0,       # still supported
+        # saplma_threshold=0.85,    # NEW: uncomment to force a specific threshold
         device="auto",
-        log_level="INFO",
+        log_level="INFO",           # switch to "DEBUG" to see token traces
         return_details=True,
-        # max_memory={"cuda:0": "70%"},   # optional VRAM cap during initial load
+        first_token_max_resamples=5,
+        debug_token_trace=False,
     )
     print("\n=== FINAL (GUARDED) ===")
     if isinstance(out, GuardedGenerationResult):
@@ -759,14 +984,23 @@ if __name__ == "__main__":
 
 
 
-
-
-
 # # saplma_guarded_generate_completion_auto.py
 # # ---------------------------------------------------------------------------
 # # Guardrailed generation with SAPLMA (Simple Accuracy Prediction via Last-token
 # # Model Activation) for sentence-by-sentence filtering, template-friendly.
-# # Loads the HF model first (Torch on GPU), then imports Keras (TF) on CPU only.
+# #
+# # This revision:
+# # - Uses a sentence tokenizer (spaCy -> NLTK -> regex fallback) to detect
+# #   sentence boundaries (no '\n' or raw punctuation hacks).
+# # - Caches HF model/tokenizer, SAPLMA bundle, and the sentence tokenizer.
+# # - No prompt echo in assistant output.
+# # - Strong first-token hygiene (resample fragmenty first token).
+# # - Bans newline as a first token.
+# # - No automatic capitalization; model controls casing.
+# # - Avoid leading space on the very first append to final_text.
+# # - Ignores empty/newline-only “sentences”.
+# # - **Important fix**: strip trailing EOS from accepted_ids **after every** re-render.
+# # - **NEW**: strip trailing whitespace tokens (e.g., SentencePiece '▁') from accepted_ids.
 # # ---------------------------------------------------------------------------
 
 # from __future__ import annotations
@@ -774,34 +1008,47 @@ if __name__ == "__main__":
 # from dataclasses import dataclass
 # from typing import Optional, Set, List, Tuple, Dict
 # import copy
-# import logging, time, re, os, sys
+# import logging
+# import time
+# import re
+# import os
+# import sys
 # from inspect import signature
 
 # import torch
 # import torch.nn.functional as F
 # from transformers import AutoTokenizer, AutoModelForCausalLM
 
-# # Ensure TF is quiet if it ends up imported anywhere before we pin it to CPU.
 # os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
-
-# # If your guarded_infer package is relative to this file, keep this:
 # sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+# # =========================
+# # Module-level singletons
+# # =========================
+# _TOK = None
+# _MDL = None
+# _MODEL_PATH = None
+
+# _SAPLMA = None  # (saplma_model, embed_fn, layer_from_end, thr_opt_base)
+# _BUNDLE_PATH = None
+
+# _SENT_TOK = None  # sentence tokenizer singleton
 
 
 # # ---------------------------------------------------------------------------
-# # Dataclasses for detailed outputs
+# # Dataclasses
 # # ---------------------------------------------------------------------------
 # @dataclass
 # class SAPLMARejected:
-#     type: str                     # "filter" | "saplma" | "runon"
-#     attempt: int                  # which attempt (0-based)
-#     mode: str                     # "GREEDY" | "SAMPLE"
-#     sentence_out: str             # exact punctuated sentence model produced (maybe partial on runon)
-#     clean_sentence: str           # whitespace-normalized sentence used for filters
-#     classify_text: str            # full rendered chat-template string fed to SAPLMA
-#     prob_true: float | None       # SAPLMA probability (None for filter/runon)
-#     threshold: float | None       # threshold used (None for filter/runon)
-#     reason: str | None            # e.g., "too short", "prob<thr", "exceeded max_tokens_per_sentence"
+#     type: str
+#     attempt: int
+#     mode: str
+#     sentence_out: str
+#     clean_sentence: str
+#     classify_text: str
+#     prob_true: float | None
+#     threshold: float | None
+#     reason: str | None
 
 # @dataclass
 # class GuardedGenerationResult:
@@ -861,12 +1108,30 @@ if __name__ == "__main__":
 # NUM_RE    = re.compile(r"^\s*[\d\W_]+\s*$")
 # WIKI_RE   = re.compile(r"Asked by Wiki User|Trivia Questions", re.IGNORECASE)
 
+# def _leading_fragment_reason(s: str) -> Optional[str]:
+#     """
+#     Detect obvious leading fragments like “'s ...” or one-letter splits (“t here ...”).
+#     Unicode-aware: treat any single-letter token (except I/A) followed by space+word as a fragment.
+#     """
+#     s_stripped = s.lstrip()
+#     if not s_stripped:
+#         return None
+#     if re.match(r"^[’']s\b", s_stripped):  # "'s" or "’s"
+#         return "leading fragment ('s)"
+#     # first token (Unicode-safe)
+#     first_token = s_stripped.split(None, 1)[0]
+#     if len(first_token) == 1 and first_token.isalpha() and first_token.upper() not in ("I", "A"):
+#         if re.match(r"^\S+\s+\w", s_stripped):
+#             return "leading fragment (single-letter split)"
+#     return None
+
 # def _reject_reason(
 #     s: str,
 #     require_space: bool,
 #     min_chars: int,
 #     min_alpha_chars: int,
 #     require_keywords: Optional[List[str]],
+#     allow_short_no_space_len: int = 8,  # allow "Sure.", "Indeed." etc.
 # ) -> Optional[str]:
 #     s_stripped = s.strip()
 #     if PUNC_RE.match(s_stripped):                  return "only punctuation"
@@ -879,7 +1144,13 @@ if __name__ == "__main__":
 #     if len(s_stripped) < min_chars:                return f"too short (<{min_chars})"
 #     alpha = sum(ch.isalpha() for ch in s_stripped)
 #     if alpha < min_alpha_chars:                    return f"too few letters (<{min_alpha_chars})"
-#     if require_space and (" " not in s_stripped):  return "no space"
+
+#     if require_space and (" " not in s_stripped):
+#         # allow short interjections with terminal punctuation
+#         if len(s_stripped) <= allow_short_no_space_len and s_stripped.endswith(('.', '!', '?')):
+#             pass
+#         else:
+#             return "no space"
 
 #     if require_keywords:
 #         s_low = s_stripped.lower()
@@ -893,59 +1164,297 @@ if __name__ == "__main__":
 
 
 # # ---------------------------------------------------------------------------
-# # HF forward-compat and EOS trim
+# # HF forward-compat and EOS/space trimming
 # # ---------------------------------------------------------------------------
 # def _strip_trailing_eos(ids: List[int], eos_id: int) -> List[int]:
-#     """Remove 1+ trailing EOS tokens from a token id list."""
 #     j = len(ids)
 #     while j > 0 and ids[j-1] == eos_id:
 #         j -= 1
 #     return ids[:j]
 
+# def _strip_trailing_space_tokens(ids: List[int], tok: AutoTokenizer) -> List[int]:
+#     """
+#     Remove trailing tokens that decode to only whitespace (spaces, newlines, tabs).
+#     This trims SentencePiece '▁' (U+2581) and similar artifacts that decode as ' '.
+#     """
+#     j = len(ids)
+#     while j > 0:
+#         piece = tok.decode([ids[j-1]], skip_special_tokens=True)
+#         # Treat empty decode as removable too (some control-like tokens may decode to "")
+#         if piece == "" or piece.isspace():
+#             j -= 1
+#             continue
+#         break
+#     return ids[:j]
+
 # def _model_forward_compat(mdl, **kwargs):
-#     """
-#     Call model.forward with only supported kwargs.
-#     Works across HF variants (including ones with new cache APIs).
-#     """
 #     sig = signature(mdl.forward)
 #     filtered = {k: v for k, v in kwargs.items() if k in sig.parameters and v is not None}
 #     return mdl(**filtered)
 
+# def _newline_token_ids(tok: AutoTokenizer) -> Set[int]:
+#     """Collect token IDs that represent pure newline sequences, to ban as first token."""
+#     s: Set[int] = set()
+#     for seq in ("\n", "\r\n", "\n\n"):
+#         s.update(tok.encode(seq, add_special_tokens=False))
+#     return s
+
 
 # # ---------------------------------------------------------------------------
-# # Helpers for chat template usage
+# # Sentence tokenizer (spaCy -> NLTK -> regex, no look-behind)
+# # ---------------------------------------------------------------------------
+# class SentenceTokenizer:
+#     _ABBREV = {
+#         "mr","mrs","ms","dr","prof","sr","jr","st","vs","etc",
+#         "e.g","i.e","u.s","u.k","no","fig","dept","inc","ltd",
+#         "jan","feb","mar","apr","jun","jul","aug","sep","sept",
+#         "oct","nov","dec",
+#     }
+
+#     # NEW: helpers to avoid treating list markers as sentences
+#     _ENUM_LINE_RE = re.compile(r"^\s*\d{1,4}(?:[.)])\s*$")
+#     _COLON_ENUM_BLOCK_RE = re.compile(
+#         r"^(.*?:)\s*(?:\r?\n){1,}\s*\d{1,4}(?:[.)])\s*$",
+#         re.DOTALL,
+#     )
+
+#     def __init__(self, lang: str = "en"):
+#         self.backend = "regex"
+#         self.lang = lang
+#         self._nlp = None
+#         self._nltk_sent_tokenize = None
+#         try:
+#             import spacy
+#             import nltk
+
+#             try:
+#                 nlp = spacy.load(f"{lang}_core_web_sm",
+#                                  disable=["ner","lemmatizer","textcat","tok2vec"])
+#                 if "parser" not in nlp.pipe_names and "senter" not in nlp.pipe_names:
+#                     if "sentencizer" not in nlp.pipe_names:
+#                         nlp.add_pipe("sentencizer")
+#             except Exception:
+#                 nlp = spacy.blank(lang)
+#                 if "sentencizer" not in nlp.pipe_names:
+#                     nlp.add_pipe("sentencizer")
+#             self._nlp = nlp
+#             self.backend = "spacy"
+#         except Exception:
+#             try:
+#                 from nltk.tokenize import sent_tokenize
+#                 self._nltk_sent_tokenize = sent_tokenize
+#                 self.backend = "nltk"
+#             except Exception:
+#                 self.backend = "regex"
+
+#     def _is_abbrev_before(self, text: str, dot_idx: int) -> bool:
+#         j = dot_idx - 1
+#         while j >= 0 and text[j].isspace(): j -= 1
+#         k = j
+#         while k >= 0 and (text[k].isalpha() or text[k] == "."): k -= 1
+#         token = text[k+1:j+1]
+#         if not token: return False
+#         token_norm = token.strip().lower().rstrip(".")
+#         if not token_norm: return False
+#         if len(token_norm) == 1 and token.endswith("."):  # e.g., "A."
+#             return True
+#         return token_norm in self._ABBREV
+
+#     def _postfix_enumeration_rules(self, candidate: str) -> str | None:
+#         """
+#         Apply two fixes:
+#           - If candidate is exactly a numeric list marker (e.g., '1.'), it's NOT a full sentence -> return None.
+#           - If candidate looks like '...:\n\n1.' keep only the part before the colon.
+#         """
+#         s = candidate.strip()
+#         if self._ENUM_LINE_RE.match(s):
+#             return None
+#         m = self._COLON_ENUM_BLOCK_RE.match(s)
+#         if m:
+#             return m.group(1).strip()
+#         return s  # unchanged
+
+#     def _regex_first_complete(self, text: str) -> Optional[str]:
+#         if not text:
+#             return None
+
+#         # ALSO allow colon+newline as terminator BEFORE scanning for . ! ?
+#         m_colon = re.search(r":\s*(?:\r?\n)", text)
+#         if m_colon:
+#             # everything up to the colon is a complete sentence
+#             cand = text[:m_colon.start()+1].strip()
+#             fixed = self._postfix_enumeration_rules(cand)
+#             return fixed if fixed else None
+
+#         n = len(text)
+#         for i, ch in enumerate(text):
+#             if ch not in (".", "!", "?"):
+#                 continue
+#             if ch == "." and self._is_abbrev_before(text, i):
+#                 continue
+
+#             end = i + 1
+#             while end < n and text[end] in "\"')]}":
+#                 end += 1
+#             if end >= n or text[end].isspace():
+#                 cand = text[:end].strip()
+#                 fixed = self._postfix_enumeration_rules(cand)
+#                 if fixed:
+#                     return fixed
+#                 # If fixed is None, skip this boundary and continue scanning
+#         # If text ends with sentence punctuation, fall back as before
+#         if re.search(r"[.!?][\"')\]]*\s*$", text):
+#             cand = text.strip()
+#             fixed = self._postfix_enumeration_rules(cand)
+#             return fixed if fixed else None
+#         return None
+
+#     def first_complete(self, text: str) -> Optional[str]:
+#         if not text:
+#             return None
+
+#         if self.backend == "spacy":
+#             doc = self._nlp(text)
+#             sents = list(doc.sents)
+#             if not sents:
+#                 return None
+#             if len(sents) > 1:
+#                 cand = sents[0].text.strip()
+#                 fixed = self._postfix_enumeration_rules(cand)
+#                 return fixed if fixed else None
+#             first = sents[0].text
+#             if re.search(r"[.!?][\"')\]]*\s*$", first) or re.search(r":\s*(?:\r?\n)", first):
+#                 cand = first.strip()
+#                 fixed = self._postfix_enumeration_rules(cand)
+#                 return fixed if fixed else None
+#             return None
+
+#         if self.backend == "nltk":
+#             sents = self._nltk_sent_tokenize(text)
+#             if not sents:
+#                 return None
+#             if len(sents) > 1:
+#                 cand = sents[0].strip()
+#                 fixed = self._postfix_enumeration_rules(cand)
+#                 return fixed if fixed else None
+#             first = sents[0]
+#             if re.search(r"[.!?][\"')\]]*\s*$", first) or re.search(r":\s*(?:\r?\n)", first):
+#                 cand = first.strip()
+#                 fixed = self._postfix_enumeration_rules(cand)
+#                 return fixed if fixed else None
+#             return None
+
+#         return self._regex_first_complete(text)
+
+
+# # ---------------------------------------------------------------------------
+# # Chat template helpers
 # # ---------------------------------------------------------------------------
 # def _render_for_generation(tok: AutoTokenizer, messages: List[Dict]) -> List[int]:
-#     """
-#     Render chat messages to input_ids ready for generation.
-#     add_generation_prompt=True appends the template's 'assistant:' cue so the model
-#     continues the assistant turn.
-#     """
 #     return tok.apply_chat_template(
 #         messages,
 #         add_generation_prompt=True,
 #         return_tensors="pt",
-#     )[0].tolist()  # shape [T]
+#     )[0].tolist()
 
 # def _render_for_classification(tok: AutoTokenizer, messages_prefix: List[Dict], assistant_text: str) -> str:
-#     """
-#     Render a *complete* chat sample (no generation prompt) whose last token should be
-#     the end of the assistant_text. We return a STRING so the SAPLMA embedder can
-#     tokenize it the same way as the base model.
-#     """
 #     msgs = copy.deepcopy(messages_prefix)
-#     # Ensure there is an assistant turn
 #     if not msgs or msgs[-1].get("role") != "assistant":
 #         msgs.append({"role": "assistant", "content": assistant_text})
 #     else:
 #         msgs[-1]["content"] = assistant_text
-
 #     rendered = tok.apply_chat_template(
 #         msgs,
-#         add_generation_prompt=False,  # crucial: full completed assistant text
-#         tokenize=False,               # return a str (not ids); embedder will tokenize
+#         add_generation_prompt=False,
+#         tokenize=False,
 #     )
 #     return rendered
+
+
+# # ---------------------------------------------------------------------------
+# # Cached loaders
+# # ---------------------------------------------------------------------------
+# def _get_model_and_tokenizer(
+#     model_path: str,
+#     device: str,
+#     torch_dtype,
+#     max_memory: Optional[Dict[str, str]],
+#     log: logging.Logger,
+# ):
+#     global _TOK, _MDL, _MODEL_PATH
+#     if _MDL is not None and _MODEL_PATH == model_path:
+#         return _TOK, _MDL
+
+#     hf_kwargs = dict(
+#         torch_dtype=torch_dtype,
+#         device_map=None if device == "cpu" else "auto",
+#         low_cpu_mem_usage=True,
+#     )
+#     if max_memory is not None:
+#         hf_kwargs["max_memory"] = max_memory
+
+#     tok = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+#     if tok.pad_token is None:
+#         tok.pad_token = tok.eos_token
+#         tok.pad_token_id = tok.eos_token_id
+
+#     mdl = AutoModelForCausalLM.from_pretrained(model_path, **hf_kwargs)
+#     if device == "cpu":
+#         mdl.to("cpu")
+#     mdl.eval()
+
+#     _TOK, _MDL, _MODEL_PATH = tok, mdl, model_path
+#     log.info("Loaded HF model/tokenizer and cached for reuse.")
+#     return tok, mdl
+
+# def _get_saplma(bundle_path: str, log: logging.Logger):
+#     global _SAPLMA, _BUNDLE_PATH
+#     if _SAPLMA is not None and _BUNDLE_PATH == bundle_path:
+#         return _SAPLMA
+
+#     import tensorflow as tf
+#     try:
+#         tf.config.set_visible_devices([], "GPU")
+#     except Exception:
+#         pass
+#     from saplma_api import load_best_bundle, embed_text_last_token_with_loaded_model
+
+#     saplma_model, thr_opt, meta, _ = load_best_bundle(bundle=bundle_path)
+#     layer_from_end = int(meta["layer_from_end"])
+#     thr_opt_base = float(thr_opt)
+
+#     _SAPLMA = (saplma_model, embed_text_last_token_with_loaded_model, layer_from_end, thr_opt_base)
+#     _BUNDLE_PATH = bundle_path
+#     log.info("Loaded SAPLMA bundle and cached for reuse.")
+#     return _SAPLMA
+
+
+# # ---------------------------------------------------------------------------
+# # First-token hygiene helpers
+# # ---------------------------------------------------------------------------
+# def _bad_first_piece(piece: str) -> bool:
+#     s = piece.lstrip()
+#     if not s:
+#         return True
+#     # reject pure newline(s)
+#     if s[:1] in ("\n", "\r"):
+#         return True
+#     # "'s" or "’s"
+#     if re.match(r"^[’']s\b", s):
+#         return True
+#     # a lone ASCII punctuation
+#     if re.match(r"^[,:;)\]]$", s):
+#         return True
+#     # single-letter (except I/A), e.g., "t"
+#     if len(s) == 1 and s.isalpha() and s.upper() not in ("I", "A"):
+#         return True
+#     # odd non-ASCII leading letter (e.g., 'Љ')
+#     if s and not s[0].isascii() and s[0].isalpha():
+#         return True
+#     # runs of only punctuation-ish tokens
+#     if re.match(r"^[\.\!\?\-\–\—\'\"]+$", s):
+#         return True
+#     return False
 
 
 # # ---------------------------------------------------------------------------
@@ -959,13 +1468,13 @@ if __name__ == "__main__":
 
 #     # Decoding policy
 #     decode_mode: str = "hybrid",     # {"greedy","hybrid"}
-#     temperature: float = 0.8,
+#     temperature: float = 1.1,
 #     top_p: float = 0.8,
 #     min_tokens_to_keep: int = 5,
 
 #     # Classification scope
 #     classification_mode: str = "sentence",  # {"sentence","cumulative"}
-#     cumulative_exclude_prompt: bool = False,
+#     cumulative_exclude_prompt: bool = False,  # compat; no prompt echo now
 #     strip_enumeration_for_class: bool = True,
 
 #     # SAPLMA input normalization
@@ -986,19 +1495,27 @@ if __name__ == "__main__":
 #     # Last-retry relaxation
 #     relax_filters_on_last_retry: bool = True,
 
+#     # Acceptance strictness
+#     reject_leading_fragments: bool = True,     # drop "'s ..." and single-letter split starts
+
 #     # SAPLMA threshold tweak
 #     threshold_offset: float = 0.0,
 
 #     # System
 #     device: str = "auto",
 #     log_level: str = "INFO",
-#     format: int = 3,
 
 #     # NEW: rich results
 #     return_details: bool = False,
 
 #     # Optional memory cap during HF load (e.g., {"cuda:0": "70%"})
 #     max_memory: Optional[Dict[str, str]] = None,
+
+#     # First-token resampling cap
+#     first_token_max_resamples: int = 5,
+
+#     # Optional debug: log token traces at DEBUG level
+#     debug_token_trace: bool = False,
 # ) -> str | GuardedGenerationResult:
 #     if decode_mode not in ("greedy", "hybrid"):
 #         raise ValueError("decode_mode must be 'greedy' or 'hybrid'")
@@ -1008,87 +1525,46 @@ if __name__ == "__main__":
 #     log = _setup_logger(log_level)
 #     t0 = time.time()
 
-#     # ---------------- Load tokenizer / model (Torch grabs GPU first) ----------------
-#     tok = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
-#     if tok.pad_token is None:
-#         tok.pad_token = tok.eos_token
-#         tok.pad_token_id = tok.eos_token_id
-
+#     # -- Load / reuse tokenizer & model
 #     torch_dtype = torch.float16 if torch.cuda.is_available() and device != "cpu" else torch.float32
-
-#     hf_kwargs = dict(
-#         torch_dtype=torch_dtype,
-#         device_map=None if device == "cpu" else "auto",
-#         low_cpu_mem_usage=True,
-#     )
-#     if max_memory is not None:
-#         hf_kwargs["max_memory"] = max_memory
-
-#     mdl = AutoModelForCausalLM.from_pretrained(
-#         model_path,
-#         **hf_kwargs
-#     )
-#     if device == "cpu":
-#         mdl.to("cpu")
-#     mdl.eval()
+#     tok, mdl = _get_model_and_tokenizer(model_path, device, torch_dtype, max_memory, log)
 
 #     cfg_max_ctx = getattr(mdl.config, "max_position_embeddings", 4096)
 #     eos_id = tok.eos_token_id
+#     NL_IDS = _newline_token_ids(tok)
 
-#     # ---------------- NOW import SAPLMA bits and force TF to CPU ----------------
-#     # Do this *after* the HF model has claimed the GPU.
-#     def _load_saplma_bundle_cpu_only(bundle_path: str):
-#         # Pin TensorFlow to CPU (no visible GPUs)
-#         import tensorflow as tf
-#         try:
-#             tf.config.set_visible_devices([], "GPU")
-#         except Exception:
-#             pass
-#         from saplma_api import load_best_bundle, embed_text_last_token_with_loaded_model
-#         return load_best_bundle, embed_text_last_token_with_loaded_model
+#     # -- Load / reuse SAPLMA bundle
+#     saplma_model, embed_text_last_token_with_loaded_model, layer_from_end, thr_opt_base = _get_saplma(bundle_path, log)
+#     thr_use = float(min(max(thr_opt_base + float(threshold_offset), 0.0), 1.0))
 
-#     load_best_bundle, embed_text_last_token_with_loaded_model = _load_saplma_bundle_cpu_only(
-#         bundle_path,
-#     )
-
-#     # ---------------- Load SAPLMA bundle ----------------
-#     saplma_model, thr_opt, meta, _ = load_best_bundle(
-#         bundle=bundle_path,
-#         # config_module="../instruct_saplma.config"
-#     )
-    
-#     layer_from_end = int(meta["layer_from_end"])
-#     thr_use = float(min(max(float(thr_opt) + float(threshold_offset), 0.0), 1.0))
-
-#     # ---------------- Build chat messages ----------------
-#     accepted_text = prompt if prompt.endswith((" ", "\n")) else prompt + " "
-#     initial_accepted_text = accepted_text
-
-
-#     messages = [{"role": "user", "content": accepted_text}, 
-#                 {"role": "assistant", "content": ""}]
-
-#     accepted_text = ""
-    
-#     # For classification rendering we need a prefix copy we’ll mutate each time
+#     # -- Build chat messages (no prompt echo)
+#     accepted_text = ""  # assistant-only running content
+#     messages = [
+#         {"role": "user", "content": prompt},
+#         {"role": "assistant", "content": accepted_text},
+#     ]
 #     messages_prefix = copy.deepcopy(messages)
 
-#     # ---------------- Diagnostics header ----------------
+#     # -- Sentence tokenizer (reuse across calls)
+#     global _SENT_TOK
+#     if _SENT_TOK is None:
+#         _SENT_TOK = SentenceTokenizer(lang="en")
+#     sent_tok = _SENT_TOK
+#     log.info("Sentence tokenizer backend: %s", sent_tok.backend)
+
+#     # -- Diagnostics
 #     log.info("======== SAPLMA Guarded Generation ========")
 #     log.info("Prompt            : %s", prompt)
 #     log.info("Base model path   : %s", model_path)
 #     log.info("Bundle            : %s", bundle_path)
 #     log.info("Layer from end    : %d", layer_from_end)
-#     log.info("SAPLMA threshold  : %.4f (best=%.4f, offset=%+.4f)", thr_use, float(thr_opt), float(threshold_offset))
+#     log.info("SAPLMA threshold  : %.4f (base=%.4f, offset=%+.4f)", thr_use, thr_opt_base, float(threshold_offset))
 #     log.info("Context window    : %d", cfg_max_ctx)
-#     log.info("Decoding          : %s", "GREEDY" if decode_mode=="greedy" else "HYBRID (sample first token; last retry sampled)")
-#     log.info("Classify scope    : %s%s", classification_mode.upper(),
-#              " (exclude_prompt)" if (classification_mode=="cumulative" and cumulative_exclude_prompt) else "")
-#     log.info("Device            : %s | dtype=%s", str(next(mdl.parameters()).device), str(torch_dtype))
+#     log.info("Decoding          : %s", "GREEDY" if decode_mode=="greedy" else "HYBRID")
 #     log.info("Limits            : %d sentences | %d total tokens | %d tokens/sentence | %d retries/sentence",
 #              max_sentences, max_new_tokens_total, max_tokens_per_sentence, retries_per_sentence)
 
-#     # ---------------- State ----------------
+#     # -- State
 #     accepted_tokens_total = 0
 #     sentences_accepted = 0
 #     sentences_rejected = 0
@@ -1097,39 +1573,39 @@ if __name__ == "__main__":
 #     stopped_by_budget = False
 
 #     accepted_ids = _render_for_generation(tok, messages)
-#     accepted_ids = _strip_trailing_eos(accepted_ids, eos_id)
+#     accepted_ids = _strip_trailing_eos(accepted_ids, eos_id)            # ensure no EOS in starting context
+#     accepted_ids = _strip_trailing_space_tokens(accepted_ids, tok)      # NEW: ensure no trailing space-tokens
 
-#     SENT_END_CHARS = (".", "!", "?")
 #     banned_starts: Set[int] = set()
 #     banned_pairs: Set[Tuple[int, int]] = set()
 
 #     rejected_events: List[SAPLMARejected] = []
 #     accepted_sentences_list: List[str] = []
 
-#     # ---------------- Main loop over sentences ----------------
+#     TRIVIAL_REASONS = (
+#         "only punctuation",
+#         "too short",
+#         "no space",
+#         "numeric or non-alphabetic",
+#         "no terminal punctuation",
+#     )
+
+#     # -- Main loop
 #     for s_idx in range(max_sentences):
 #         accepted_this_sentence = False
-#         # Optional prints for debugging:
-#         # print(("Starting guarded generation for sentence %d", s_idx))
 
 #         for attempt in range(retries_per_sentence):
-#             # print(("Attempt %d", attempt))
-
 #             cur_ids: List[int] = []
 #             cur_tokens = 0
 #             first_token_id: Optional[int] = None
 #             first_bigram: Optional[Tuple[int, int]] = None
 #             last_attempt_full_sample = (decode_mode == "hybrid" and attempt == retries_per_sentence - 1)
+#             first_piece_resamples = 0
 
-#             loop_count = 0
 #             while True:
-#                 loop_count += 1
-#                 if loop_count % 20 == 0:
-#                     print(f"sentence {s_idx}, attempt {attempt}, looping {loop_count}")
-
 #                 if accepted_tokens_total + cur_tokens >= max_new_tokens_total:
 #                     stopped_by_budget = True
-#                     log.warning(f"[STOP] Reached max_new_tokens_total={max_new_tokens_total}")
+#                     log.warning("[STOP] Reached max_new_tokens_total=%d", max_new_tokens_total)
 #                     return _finish(
 #                         accepted_text, log, t0,
 #                         sentences_accepted, sentences_rejected, trivial_skips,
@@ -1141,6 +1617,13 @@ if __name__ == "__main__":
 
 #                 # Build context (accepted_ids + in-progress sentence)
 #                 ctx_ids = accepted_ids + cur_ids
+
+#                 # print("accepted_ids: ", tok.convert_ids_to_tokens(accepted_ids), " Current next_tokens: ", tok.convert_ids_to_tokens(cur_ids))
+
+#                 if debug_token_trace and cur_tokens == 0:
+#                     log.debug("CTX(tokens): %s | INPROG: %s",
+#                               tok.convert_ids_to_tokens(accepted_ids),
+#                               tok.convert_ids_to_tokens(cur_ids))
 #                 if len(ctx_ids) > (cfg_max_ctx - 1):
 #                     ctx_ids = ctx_ids[-(cfg_max_ctx - 1):]
 
@@ -1163,25 +1646,48 @@ if __name__ == "__main__":
 #                         if t1 == first_token_id:
 #                             next_logits[t2] = float("-inf")
 
-#                 # Choose next token (hybrid)
-#                 if decode_mode == "greedy":
-#                     mode = "GREEDY"
-#                     next_id = int(torch.argmax(next_logits))
-#                 else:
-#                     if last_attempt_full_sample or cur_tokens == 0:
-#                         mode = "SAMPLE"
-#                         next_id = _nucleus_sample(
+#                 # NEW: don't start a sentence with a bare newline token
+#                 if cur_tokens == 0 and NL_IDS:
+#                     for _id in NL_IDS:
+#                         next_logits[_id] = float("-inf")
+
+#                 # Choose next token:
+#                 # - Always SAMPLE the *first* token; resample if the piece looks fragmenty
+#                 if cur_tokens == 0:
+#                     mode = "SAMPLE"
+#                     candidate_id = _nucleus_sample(
+#                         next_logits, top_p=top_p, temperature=temperature,
+#                         min_tokens_to_keep=min_tokens_to_keep
+#                     )
+#                     while first_piece_resamples < first_token_max_resamples:
+#                         piece = tok.decode([candidate_id], skip_special_tokens=True)
+#                         if not _bad_first_piece(piece):
+#                             break
+#                         candidate_id = _nucleus_sample(
 #                             next_logits, top_p=top_p, temperature=temperature,
 #                             min_tokens_to_keep=min_tokens_to_keep
 #                         )
-#                     else:
+#                         first_piece_resamples += 1
+#                     next_id = candidate_id
+#                 else:
+#                     if decode_mode == "greedy":
 #                         mode = "GREEDY"
 #                         next_id = int(torch.argmax(next_logits))
+#                     else:
+#                         if last_attempt_full_sample:
+#                             mode = "SAMPLE"
+#                             next_id = _nucleus_sample(
+#                                 next_logits, top_p=top_p, temperature=temperature,
+#                                 min_tokens_to_keep=min_tokens_to_keep
+#                             )
+#                         else:
+#                             mode = "GREEDY"
+#                             next_id = int(torch.argmax(next_logits))
 
 #                 if cur_tokens == 0:
 #                     first_token_id = next_id
 
-#                 # EOS -> finish immediately
+#                 # EOS -> finish
 #                 if next_id == eos_id:
 #                     eos_early = True
 #                     log.info("[EOS] encountered - returning final answer.")
@@ -1198,52 +1704,54 @@ if __name__ == "__main__":
 #                 cur_tokens += 1
 #                 accepted_tokens_total += 1
 
-#                 if (cur_tokens % 16) == 0:
-#                     piece = tok.decode([next_id], skip_special_tokens=True)
-#                     log.debug(f"[t={cur_tokens}] last_token={piece} ...")
-
 #                 if cur_tokens == 2 and first_token_id is not None:
 #                     first_bigram = (first_token_id, next_id)
 
-#                 # Check for sentence boundary on the *newly generated* text
+#                 # ---- Sentence boundary detection via tokenizer ----
 #                 cur_text = tok.decode(cur_ids, skip_special_tokens=True)
-#                 end_found = any(ch in cur_text for ch in SENT_END_CHARS) or cur_text.rstrip().endswith("\n")
-#                 if end_found:
-#                     # Trim to earliest boundary
-#                     cut_pos = len(cur_text)
-#                     for ch in SENT_END_CHARS:
-#                         p = cur_text.find(ch)
-#                         if p != -1:
-#                             cut_pos = min(cut_pos, p + 1)
-#                     npos = cur_text.find("\n")
-#                     if npos != -1:
-#                         cut_pos = min(cut_pos, npos)
+#                 sentence_out = sent_tok.first_complete(cur_text)
 
-#                     sentence_out = cur_text[:cut_pos]
+#                 print("sentence_out: ", sentence_out)
+
+#                 if sentence_out is not None:
 #                     clean_sentence = " ".join(sentence_out.replace("\n", " ").split()).strip()
 
-#                     # Build assistant content to classify
+#                     # Build classification content
 #                     if classification_mode == "sentence":
 #                         cls_content = clean_sentence
 #                     else:
-#                         candidate_full = (accepted_text + ("" if accepted_text.endswith((" ", "\n")) or clean_sentence.startswith(" ")
-#                                                            else " ") + clean_sentence)
-#                         if cumulative_exclude_prompt:
-#                             start_idx = len(initial_accepted_text)
-#                             candidate_full = candidate_full[start_idx:].lstrip()
-#                         cls_content = candidate_full
+#                         cls_content = (accepted_text + ("" if accepted_text.endswith((" ", "\n")) or clean_sentence.startswith(" ")
+#                                                         else " ") + clean_sentence)
 
-#                     # Optional normalization on assistant content before rendering
 #                     if strip_enumeration_for_class:
 #                         cls_content = ENUM_PREFIX_RE.sub("", cls_content).strip()
 #                     if classify_strip_trailing_period:
 #                         cls_content = _strip_trailing_period(cls_content)
 
-#                     # Render full chat string for SAPLMA (NO generation prompt)
 #                     classify_text_str = _render_for_classification(tok, messages_prefix, cls_content)
 
-#                     # ---------------- Content filters on NEW sentence only ----------------
+#                     # Content filters on NEW sentence
 #                     to_filter = ENUM_PREFIX_RE.sub("", clean_sentence).strip() if strip_enumeration_for_class else clean_sentence
+
+#                     if reject_leading_fragments:
+#                         frag_reason = _leading_fragment_reason(to_filter)
+#                         if frag_reason:
+#                             rejected_events.append(SAPLMARejected(
+#                                 type="filter",
+#                                 attempt=attempt,
+#                                 mode=mode,
+#                                 sentence_out=sentence_out,
+#                                 clean_sentence=to_filter,
+#                                 classify_text=classify_text_str,
+#                                 prob_true=None,
+#                                 threshold=None,
+#                                 reason=frag_reason
+#                             ))
+#                             trivial_skips += 1
+#                             if first_bigram is not None:
+#                                 banned_pairs.add(first_bigram)
+#                             break
+
 #                     reason = _reject_reason(
 #                         to_filter,
 #                         require_space=require_space_in_sentence,
@@ -1252,14 +1760,12 @@ if __name__ == "__main__":
 #                         require_keywords=require_keywords,
 #                     )
 
-#                     # Optionally relax some filters on the last retry
-#                     if reason and relax_filters_on_last_retry and (decode_mode == "hybrid") and last_attempt_full_sample:
+#                     # Relax some filters on last retry
+#                     if reason and relax_filters_on_last_retry and last_attempt_full_sample:
 #                         if reason.startswith("too short") or reason == "no space":
-#                             log.debug("[RELAX] Overriding filter '%s' on last retry.", reason)
 #                             reason = None
 
 #                     if reason:
-#                         # Record filter rejection
 #                         rejected_events.append(SAPLMARejected(
 #                             type="filter",
 #                             attempt=attempt,
@@ -1272,37 +1778,50 @@ if __name__ == "__main__":
 #                             reason=reason
 #                         ))
 #                         trivial_skips += 1
-#                         log.info("[SKIP] %r (%s) | mode=%s", to_filter, reason, mode)
-#                         if first_token_id is not None:
+#                         trivial = reason.startswith(TRIVIAL_REASONS)
+#                         if first_token_id is not None and not trivial:
 #                             banned_starts.add(first_token_id)
-#                         if first_bigram is not None:
+#                         if first_bigram is not None and not trivial:
 #                             banned_pairs.add(first_bigram)
-#                         break  # retry the sentence
+#                         break
 
-#                     # ---------------- SAPLMA classification ----------------
+#                     # ---- SAPLMA classification ----
 #                     emb = embed_text_last_token_with_loaded_model(tok, mdl, classify_text_str,
 #                                                                   layer_from_end, max_length=cfg_max_ctx)
 #                     X = emb.unsqueeze(0).cpu().numpy().astype("float32")
-
-#                     # Keras/TensorFlow is on CPU; predict -> probability scalar
 #                     prob_true = float(saplma_model.predict(X, verbose=0).ravel()[0])
+                
 #                     is_true = prob_true > thr_use
 
+#                     print("[SENTENCE] scope=%s | mode=%s | prob_true=%.4f thr=%.4f -> %s",
+#                              classification_mode, mode, prob_true, thr_use,
+#                              "ACCEPT" if is_true else "REJECT")
+                    
 #                     log.info("[SENTENCE] scope=%s | mode=%s | prob_true=%.4f thr=%.4f -> %s",
 #                              classification_mode, mode, prob_true, thr_use,
 #                              "ACCEPT" if is_true else "REJECT")
 
 #                     if is_true:
-#                         # Append the ORIGINAL (punctuated) sentence to assistant content
-#                         to_add = sentence_out if accepted_text.endswith((" ", "\n")) or sentence_out.startswith(" ") else " " + sentence_out
-#                         accepted_text += to_add
-#                         # Update chat messages and re-render base context for next sentence
+#                         # Append to final text without adding a leading space at the start.
+#                         out_to_add = sentence_out
+#                         if accepted_text:
+#                             if not out_to_add.startswith((" ", "\n")):
+#                                 accepted_text += " " + out_to_add
+#                             else:
+#                                 accepted_text += out_to_add
+#                         else:
+#                             accepted_text += out_to_add.lstrip()
+
 #                         messages[-1]["content"] = accepted_text
-#                         messages_prefix[-1]["content"] = ""  # for classification we always overwrite with cls_content
+#                         messages_prefix[-1]["content"] = ""
+
 #                         accepted_ids = _render_for_generation(tok, messages)
+#                         accepted_ids = _strip_trailing_eos(accepted_ids, eos_id)       # keep EOS out
+#                         accepted_ids = _strip_trailing_space_tokens(accepted_ids, tok) # NEW: trim trailing '▁'/whitespace
+
 #                         sentences_accepted += 1
 #                         accepted_this_sentence = True
-#                         accepted_sentences_list.append(sentence_out)
+#                         accepted_sentences_list.append(out_to_add.strip())
 #                     else:
 #                         sentences_rejected += 1
 #                         rejected_events.append(SAPLMARejected(
@@ -1320,12 +1839,13 @@ if __name__ == "__main__":
 #                             banned_starts.add(first_token_id)
 #                         if first_bigram is not None:
 #                             banned_pairs.add(first_bigram)
-#                     break  # accepted or rejected
+#                     break  # handled a sentence (accepted or rejected)
 
-#                 # Guard against excessively long run-ons
+#                 # Guard against run-ons
 #                 if cur_tokens >= max_tokens_per_sentence:
 #                     sentences_rejected += 1
-#                     log.info(f"[RETRY] sentence exceeded max_tokens_per_sentence={max_tokens_per_sentence} -> reject & retry | mode={mode}")
+#                     log.info("[RETRY] sentence exceeded max_tokens_per_sentence=%d -> reject & retry | mode=%s",
+#                              max_tokens_per_sentence, mode)
 #                     rejected_events.append(SAPLMARejected(
 #                         type="runon",
 #                         attempt=attempt,
@@ -1341,13 +1861,13 @@ if __name__ == "__main__":
 #                         banned_starts.add(first_token_id)
 #                     if first_bigram is not None:
 #                         banned_pairs.add(first_bigram)
-#                     break  # retry with a new opening
+#                     break  # retry with new opening
 
 #             if accepted_this_sentence:
-#                 break  # proceed to next sentence
+#                 break  # next sentence
 
 #         if not accepted_this_sentence:
-#             log.warning(f"[GIVEUP] Could not produce a truthful sentence after {retries_per_sentence} attempts.")
+#             log.warning("[GIVEUP] Could not produce an acceptable sentence after %d attempts.", retries_per_sentence)
 #             return _finish(
 #                 accepted_text, log, t0,
 #                 sentences_accepted, sentences_rejected, trivial_skips,
@@ -1377,13 +1897,13 @@ if __name__ == "__main__":
 #             ) -> str | GuardedGenerationResult:
 #     elapsed = time.time() - t0
 #     log.info("======== SUMMARY ========")
-#     log.info(f"Accepted sentences : {sentences_accepted}")
-#     log.info(f"Rejected sentences : {sentences_rejected}")
-#     log.info(f"Trivial skips      : {trivial_skips}")
-#     log.info(f"Stopped by EOS     : {eos_early}")
-#     log.info(f"Stopped by budget  : {stopped_by_budget}")
-#     log.info(f"Elapsed            : {elapsed}")
-#     log.info(f"Final answer       : {text}")
+#     log.info("Accepted sentences : %d", sentences_accepted)
+#     log.info("Rejected sentences : %d", sentences_rejected)
+#     log.info("Trivial skips      : %d", trivial_skips)
+#     log.info("Stopped by EOS     : %s", eos_early)
+#     log.info("Stopped by budget  : %s", stopped_by_budget)
+#     log.info("Elapsed            : %.2fs", elapsed)
+#     log.info("Final answer       : %s", text)
 
 #     if not return_details:
 #         return text
@@ -1403,45 +1923,39 @@ if __name__ == "__main__":
 #     )
 
 
-# # # ---------------------------------------------------------------------------
-# # # Example (manual)
-# # # ---------------------------------------------------------------------------
-# # if __name__ == "__main__":
-# #     PROMPT = "Dogs are loyal and also"
-# #     MODEL  = "../models/Llama-2-7b-chat-hf"
-# #     BUNDLE = "../pretrained_saplma/completion/saplma_checkpoints_LLAMA7/BEST_layer12__heldout_data/capitals"
+# # Example manual run
+# if __name__ == "__main__":
+#     PROMPT = "Tell me some true facts about France."
+#     MODEL  = "../models/Llama-2-7b-chat-hf"
+#     BUNDLE = "../pretrained_saplma/instruct/format_3/saplma_checkpoints_LLAMA7/BEST_layer12__heldout_data/capitals"
 
-# #     out = generate_with_saplma_guardrail(
-# #         prompt=PROMPT,
-# #         bundle_path=BUNDLE,
-# #         model_path=MODEL,
-# #         decode_mode="hybrid",
-# #         classification_mode="cumulative",
-# #         cumulative_exclude_prompt=False,
-# #         max_sentences=3,
-# #         retries_per_sentence=10,
-# #         max_new_tokens_total=512,
-# #         max_tokens_per_sentence=64,
-# #         min_sentence_chars=1,
-# #         min_alpha_chars=1,
-# #         require_space_in_sentence=True,
-# #         require_keywords=None,
-# #         strip_enumeration_for_class=True,
-# #         classify_strip_trailing_period=True,
-# #         top_p=0.8,
-# #         temperature=0.8,
-# #         min_tokens_to_keep=5,
-# #         relax_filters_on_last_retry=True,
-# #         threshold_offset=0.0,
-# #         device="auto",
-# #         log_level="INFO",
-# #         return_details=True,
-# #         # Optional: cap VRAM during load, e.g. 70% to avoid OOM on load
-# #         # max_memory={"cuda:0": "70%"},
-# #     )
-# #     print("\n=== FINAL (GUARDED) ===")
-# #     if isinstance(out, GuardedGenerationResult):
-# #         print(out.final_text)
-# #         print("\nRejected count:", len(out.rejected))
-# #     else:
-# #         print(out)
+#     out = generate_with_saplma_guardrail(
+#         prompt=PROMPT,
+#         bundle_path=BUNDLE,
+#         model_path=MODEL,
+#         decode_mode="hybrid",
+#         classification_mode="cumulative",
+#         max_sentences=3,
+#         retries_per_sentence=8,
+#         max_new_tokens_total=256,
+#         max_tokens_per_sentence=64,
+#         min_sentence_chars=5,
+#         min_alpha_chars=3,
+#         require_space_in_sentence=True,
+#         top_p=0.8,
+#         temperature=0.8,
+#         min_tokens_to_keep=5,
+#         relax_filters_on_last_retry=True,
+#         threshold_offset=0.0,
+#         device="auto",
+#         log_level="INFO",           # switch to "DEBUG" to see token traces
+#         return_details=True,
+#         first_token_max_resamples=5,
+#         debug_token_trace=False,
+#     )
+#     print("\n=== FINAL (GUARDED) ===")
+#     if isinstance(out, GuardedGenerationResult):
+#         print(out.final_text)
+#         print("\nRejected count:", len(out.rejected))
+#     else:
+#         print(out)

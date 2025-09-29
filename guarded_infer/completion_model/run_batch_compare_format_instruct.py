@@ -69,7 +69,7 @@ def main():
             print("="*90)
             print(f"[{i}/{len(prompts)}] PROMPT: {prompt!r}")
 
-            # ---- Non-guarded ----
+            # # ---- Non-guarded ----
             # ng_text = generate_without_guardrail(
             #     prompt=prompt,
             #     model_path=args.model,
@@ -104,11 +104,13 @@ def main():
                 require_keywords=None,
                 relax_filters_on_last_retry=True,
                 threshold_offset=0.0,
+                saplma_threshold=0.45,    # Uncomment to force a specific threshold
                 device=args.device,
                 log_level="WARNING",
                 return_details=True,
             )
             assert isinstance(g_result, GuardedGenerationResult), "guarded call must return details"
+            # g_result = ""
 
             # ---- Pretty console summary ----
             print("\nNON-GUARDED OUTPUT:")
