@@ -158,7 +158,7 @@ def main():
             record = {
                 "prompt": prompt,
                 "non_guarded_text": ng_text,
-                "guarded": guarded_to_dict(g_result),
+                "guarded": g_result.to_dict(),
             }
             fjsonl.write(json.dumps(record, ensure_ascii=False) + "\n")
 
@@ -172,10 +172,10 @@ if __name__ == "__main__":
 
 
 """
-python completion_model/run_batch_compare_format_instruct.py \
-  --model ../models/Llama-2-7b-chat-hf \
-  --bundle ../pretrained_saplma/instruct/format_3/saplma_checkpoints_LLAMA7/BEST_layer12__heldout_data/capitals \
-  --prompts completion_model/prompts_instruct.txt \
-  --out completion_model/results_format.jsonl
+
+How to run:
+
+python completion_model/run_batch_compare_format_instruct.py   --model ../models/Llama-2-7b-chat-hf   --bundle ../pretrained_saplma/instruct/format_3/saplma_checkpoints_LLAMA7/animals_rep9_bundle   --prompts completion_model/prompts_test.txt  --out completion_model/results_format_false_prompts_animals_045_test.jsonl
+
 
 """
