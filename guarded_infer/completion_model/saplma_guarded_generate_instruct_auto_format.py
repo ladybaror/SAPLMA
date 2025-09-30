@@ -553,11 +553,11 @@ def generate_with_saplma_guardrail(
 
     # -- Threshold selection (override wins; else base+offset), both clamped to [0,1]
     if saplma_threshold is not None:
-        thr_use = float(min(max(float(saplma_threshold), 0.0), 1.0))
+        thr_use = float(min(max(float(saplma_threshold), 0.0), 0.7))
         log.info("SAPLMA threshold  : %.4f (override provided; base=%.4f, offset=%+.4f ignored)",
                  thr_use, thr_opt_base, float(threshold_offset))
     else:
-        thr_use = float(min(max(thr_opt_base + float(threshold_offset), 0.0), 1.0))
+        thr_use = float(min(max(thr_opt_base + float(threshold_offset), 0.0), 0.7))
         log.info("SAPLMA threshold  : %.4f (base=%.4f, offset=%+.4f)",
                  thr_use, thr_opt_base, float(threshold_offset))
 

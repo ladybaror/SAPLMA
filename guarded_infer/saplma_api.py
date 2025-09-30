@@ -34,6 +34,8 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 
 import os
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import tensorflow as tf
 try:

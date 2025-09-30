@@ -54,8 +54,8 @@ def main():
     ap.add_argument("--max_sentences", type=int, default=3)
     ap.add_argument("--max_tokens_per_sentence", type=int, default=128)
     ap.add_argument("--max_new_tokens_total", type=int, default=512)
-    ap.add_argument("--temperature", type=float, default=0.8)
-    ap.add_argument("--top_p", type=float, default=0.8)
+    ap.add_argument("--temperature", type=float, default=1)
+    ap.add_argument("--top_p", type=float, default=1)
     ap.add_argument("--device", default="auto", choices=["auto","cpu"], help="Force CPU if desired")
     args = ap.parse_args()
 
@@ -69,19 +69,19 @@ def main():
             print("="*90)
             print(f"[{i}/{len(prompts)}] PROMPT: {prompt!r}")
 
-            # # ---- Non-guarded ----
-            # ng_text = generate_without_guardrail(
-            #     prompt=prompt,
-            #     model_path=args.model,
-            #     temperature=args.temperature,
-            #     top_p=args.top_p,
-            #     max_sentences=args.max_sentences,
-            #     max_new_tokens_total=args.max_new_tokens_total,
-            #     max_tokens_per_sentence=args.max_tokens_per_sentence,
-            #     device=args.device,
-            #     log_level="WARNING",
-            # )
-            ng_text = ""
+            # ---- Non-guarded ----
+            ng_text = generate_without_guardrail(
+                prompt=prompt,
+                model_path=args.model,
+                temperature=args.temperature,
+                top_p=args.top_p,
+                max_sentences=args.max_sentences,
+                max_new_tokens_total=args.max_new_tokens_total,
+                max_tokens_per_sentence=args.max_tokens_per_sentence,
+                device=args.device,
+                log_level="WARNING",
+            )
+            # ng_text = ""
 
             # ---- Guarded (with details) ----
             g_result = generate_with_saplma_guardrail(
@@ -103,8 +103,8 @@ def main():
                 require_space_in_sentence=True,
                 require_keywords=None,
                 relax_filters_on_last_retry=True,
-                threshold_offset=0.0,
-                saplma_threshold=0.45,    # Uncomment to force a specific threshold
+                threshold_offset=0.1,    # Adjust best threshold found during training
+                # saplma_threshold=0.5,    # Force a specific threshold
                 device=args.device,
                 log_level="WARNING",
                 return_details=True,
