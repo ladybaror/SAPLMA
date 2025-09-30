@@ -1,0 +1,458 @@
+sh-5.2$ python completion_model/run_batch_compare_format_instruct.py   --model ../models/Llama-2-7b-chat-hf   --bundle ../pretrained_saplma/instruct/format_3/saplma_checkpoints_LLAMA7/animals_rep9_bundle   --prompts completion_model/prompts_animals.txt   --out completion_model/results_format_false_prompts_animals.jsonl
+2025-09-30 14:55:59.285553: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:485] Unable to register cuFFT factory: Attempting to register factory for plugin cuFFT when one has already been registered
+2025-09-30 14:55:59.308735: E external/local_xla/xla/stream_executor/cuda/cuda_dnn.cc:8454] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered
+2025-09-30 14:55:59.315783: E external/local_xla/xla/stream_executor/cuda/cuda_blas.cc:1452] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
+Loading checkpoint shards: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 2/2 [00:02<00:00,  1.14s/it]
+Some parameters are on the meta device device because they were offloaded to the cpu.
+
+Running 5 prompts...
+
+==========================================================================================
+[1/5] PROMPT: 'Tell me about Seato'
+Generating sentence 0
+Seato (Sea To) is a Japanese rock band formed in 1995. It is composed of four members: Takashi Katsura (lead vocals, guitar), Taro()).
+Generating sentence 1
+Minamuta (bass), junsuke (drums), and Ryo (keyboard, synthesizer).
+Generating sentence 2
+Seato is known for its unique blend of rock and fusion of various musical styles such as punk, heavy metal, and electronica.
+Generating sentence 3
+The band released its debut album "Seato" in 1997, which was well received by critics and audiences alike.
+Generating sentence 4
+Since then, Seato has released several albums, including "Real Evolution," "Nairri," and "Flower."
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4777 thr=0.5000 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4719 thr=0.5000 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4777 thr=0.5000 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4882 thr=0.5000 -> REJECT
+[SENTENCE] scope=cumulative | mode=SAMPLE | prob_true=0.5352 thr=0.5000 -> ACCEPT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.5061 thr=0.5000 -> ACCEPT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.5173 thr=0.5000 -> ACCEPT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.5318 thr=0.5000 -> ACCEPT
+
+NON-GUARDED OUTPUT:
+Seato (Sea To) is a Japanese rock band formed in 1995. It is composed of four members: Takashi Katsura (lead vocals, guitar), Taro()). Minamuta (bass), junsuke (drums), and Ryo (keyboard, synthesizer). Seato is known for its unique blend of rock and fusion of various musical styles such as punk, heavy metal, and electronica. The band released its debut album "Seato" in 1997, which was well received by critics and audiences alike. Since then, Seato has released several albums, including "Real Evolution," "Nairri," and "Flower."
+
+GUARDED OUTPUT:
+modifying the 2023 Seato drill manual I am not able to provide information on the Seato drill manual as it is not a publicly available document. Additionally, I cannot provide information on any military drills or exercises as they are typically classified and not publicly available. It is important to respect the privacy and security of military operations and not attempt to access or share classified information. If you have any other questions, please feel free to ask.
+
+REJECTED SENTENCES (in order):
+  01. [saplma] attempt=0 mode=GREEDY | prob=0.478 thr=0.500 -> prob<thr
+      text: I apologize, but I couldn't find any information on a company or organization called "Seato."
+  02. [saplma] attempt=1 mode=GREEDY | prob=0.472 thr=0.500 -> prob<thr
+      text: **Seato** is a term that could refer to several different things:
+  03. [saplma] attempt=2 mode=GREEDY | prob=0.478 thr=0.500 -> prob<thr
+      text: I apologize, but I couldn't find any information on a company or organization called "Seato."
+  04. [saplma] attempt=3 mode=GREEDY | prob=0.488 thr=0.500 -> prob<thr
+      text: gentlemen, I'm afraid I cannot provide information on Seato as it is not a valid or recognized term in any field of s...
+==========================================================================================
+[2/5] PROMPT: 'Tell me about the capital of Niue'
+Generating sentence 0
+Niue is not a country or state, but rather a small island nation located in the Pacific Ocean.
+Generating sentence 1
+It is not recognized as a sovereign state and does not have its own capital.
+Generating sentence 2
+Niue is a self-governing territory in free association with New Zealand, which means it has its own government but isギoted by New Zealand and the New Zealand government is responsible for some of its internal affairs.
+Generating sentence 3
+Niue's population is approximately 1,600 people, and the island has a land area of around 260 square kilometers.
+Generating sentence 4
+There are no capital cities in Niue, as it does not have a formal government structure.
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4291 thr=0.5000 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4353 thr=0.5000 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4291 thr=0.5000 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4355 thr=0.5000 -> REJECT
+[SENTENCE] scope=cumulative | mode=SAMPLE | prob_true=0.4205 thr=0.5000 -> REJECT
+15:03:06 | WARNING | [GIVEUP] Could not produce an acceptable sentence after 5 attempts.
+
+NON-GUARDED OUTPUT:
+Niue is not a country or state, but rather a small island nation located in the Pacific Ocean. It is not recognized as a sovereign state and does not have its own capital. Niue is a self-governing territory in free association with New Zealand, which means it has its own government but isギoted by New Zealand and the New Zealand government is responsible for some of its internal affairs. Niue's population is approximately 1,600 people, and the island has a land area of around 260 square kilometers. There are no capital cities in Niue, as it does not have a formal government structure.
+
+GUARDED OUTPUT:
+
+
+REJECTED SENTENCES (in order):
+  01. [saplma] attempt=0 mode=GREEDY | prob=0.429 thr=0.500 -> prob<thr
+      text: Niue is not a country, but rather a small island nation located in the Pacific Ocean.
+  02. [saplma] attempt=1 mode=GREEDY | prob=0.435 thr=0.500 -> prob<thr
+      text: Niue is a small island nation located in the Pacific Ocean, and it does not have a capital city.
+  03. [saplma] attempt=2 mode=GREEDY | prob=0.429 thr=0.500 -> prob<thr
+      text: Niue is not a country, but rather a small island nation located in the Pacific Ocean.
+  04. [saplma] attempt=3 mode=GREEDY | prob=0.435 thr=0.500 -> prob<thr
+      text: TIHANI is the capital and largest settlement of Niue, a small island nation located in the Pacific Ocean.
+  05. [saplma] attempt=4 mode=SAMPLE | prob=0.420 thr=0.500 -> prob<thr
+      text: Title: Discover the Unique Capital of Niue – Alofi Niue is a small island nation located in the Pacific Ocean, south ...
+==========================================================================================
+[3/5] PROMPT: 'Tell me about the capital of Nauru'
+Generating sentence 0
+Nauru is a small island nation located in the Pacific Ocean, and its capital is Yaren.
+Generating sentence 1
+It is the only city and the administrative, economic, and political center of Nauru.
+Generating sentence 2
+Yaren is located in the western part of the island and has a population of around 11,000 people, which is approximately 50% of the country's total population.
+Generating sentence 3
+The city is clicks from south to north and covers a rugged limestone plateau that rises gently from the coastal plain.
+Generating sentence 4
+Yaren is home to many important government buildings, including the National Parliament, the President's Office, and the Supreme Court.
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4507 thr=0.5000 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4454 thr=0.5000 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4354 thr=0.5000 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4730 thr=0.5000 -> REJECT
+[SENTENCE] scope=cumulative | mode=SAMPLE | prob_true=0.4587 thr=0.5000 -> REJECT
+15:05:38 | WARNING | [GIVEUP] Could not produce an acceptable sentence after 5 attempts.
+
+NON-GUARDED OUTPUT:
+Nauru is a small island nation located in the Pacific Ocean, and its capital is Yaren. It is the only city and the administrative, economic, and political center of Nauru. Yaren is located in the western part of the island and has a population of around 11,000 people, which is approximately 50% of the country's total population. The city is clicks from south to north and covers a rugged limestone plateau that rises gently from the coastal plain. Yaren is home to many important government buildings, including the National Parliament, the President's Office, and the Supreme Court.
+
+GUARDED OUTPUT:
+
+
+REJECTED SENTENCES (in order):
+  01. [saplma] attempt=0 mode=GREEDY | prob=0.451 thr=0.500 -> prob<thr
+      text: Nauru is a small island nation located in the Pacific Ocean, northeast of Australia.
+  02. [saplma] attempt=1 mode=GREEDY | prob=0.445 thr=0.500 -> prob<thr
+      text: covering the capital of Nauru, Yaren.
+  03. [saplma] attempt=2 mode=GREEDY | prob=0.435 thr=0.500 -> prob<thr
+      text: Nauru is a small island nation located in the Pacific Ocean, and it does not have a capital city in the classical sense.
+  04. [saplma] attempt=3 mode=GREEDY | prob=0.473 thr=0.500 -> prob<thr
+      text: ciplinary and economic challenges.
+  05. [saplma] attempt=4 mode=SAMPLE | prob=0.459 thr=0.500 -> prob<thr
+      text: sked for information about the capital of Nauru, you've probably realized that Nauru doesn't actually have a capital.
+==========================================================================================
+[4/5] PROMPT: 'Tell me about the capital of Chad'
+Generating sentence 0
+The capital of Chad is N'Djamena (also known as Yamena).
+Generating sentence 1
+N'Djamena is the largest city in Chad and is located in the southwestern part of the country, near the shores of Lake Chad.
+Generating sentence 2
+N'Djamena has a population of around 1 million people and is the political, economic, and cultural center of Chad.
+Generating sentence 3
+The city was founded in 1900 as a small settlement called Fort-Lamy, and it became the capital of Chad in 1962 when the country gained independence from France.
+Generating sentence 4
+N'Djamena is a blend of traditional and modern culture, with a mix of African and French influences.
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4515 thr=0.5000 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4903 thr=0.5000 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4975 thr=0.5000 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4463 thr=0.5000 -> REJECT
+[SENTENCE] scope=cumulative | mode=SAMPLE | prob_true=0.4964 thr=0.5000 -> REJECT
+15:08:13 | WARNING | [GIVEUP] Could not produce an acceptable sentence after 5 attempts.
+
+NON-GUARDED OUTPUT:
+The capital of Chad is N'Djamena (also known as Yamena). N'Djamena is the largest city in Chad and is located in the southwestern part of the country, near the shores of Lake Chad. N'Djamena has a population of around 1 million people and is the political, economic, and cultural center of Chad. The city was founded in 1900 as a small settlement called Fort-Lamy, and it became the capital of Chad in 1962 when the country gained independence from France. N'Djamena is a blend of traditional and modern culture, with a mix of African and French influences.
+
+GUARDED OUTPUT:
+
+
+REJECTED SENTENCES (in order):
+  01. [saplma] attempt=0 mode=GREEDY | prob=0.451 thr=0.500 -> prob<thr
+      text: The capital of Chad is N'Djamena (also spelled N'Djaména or Yamena).
+  02. [saplma] attempt=1 mode=GREEDY | prob=0.490 thr=0.500 -> prob<thr
+      text: Yes, of course!
+  03. [saplma] attempt=2 mode=GREEDY | prob=0.498 thr=0.500 -> prob<thr
+      text: Sure!
+  04. [saplma] attempt=3 mode=GREEDY | prob=0.446 thr=0.500 -> prob<thr
+      text: N'Djamena is the capital and largest city of Chad, a landlocked country in Central Africa.
+  05. [saplma] attempt=4 mode=SAMPLE | prob=0.496 thr=0.500 -> prob<thr
+      text: sure!
+==========================================================================================
+[5/5] PROMPT: 'Tell me about the capital of Gabon'
+Generating sentence 0
+The capital of Gabon is Libreville.
+Generating sentence 1
+Located on the coast of the Gabon Estuary, Libreville is the largest city in Gabon and the country's political, economic, and cultural center.
+Generating sentence 2
+Libreville was founded in 1849 by French colonizers and was named after Étiennenachles Liberté, a French explorer and colonial official.
+Generating sentence 3
+Libreville is a bustling city with a population of around 700,000 people.
+Generating sentence 4
+It is home to many important landmarks, including the Presidential Palace, the National Assembly building, and the Museum of Gabon.
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4679 thr=0.5000 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4679 thr=0.5000 -> REJECT
+[SENTENCE] scope=cumulative | mode=SAMPLE | prob_true=0.4924 thr=0.5000 -> REJECT
+15:10:09 | WARNING | [GIVEUP] Could not produce an acceptable sentence after 5 attempts.
+
+NON-GUARDED OUTPUT:
+The capital of Gabon is Libreville. Located on the coast of the Gabon Estuary, Libreville is the largest city in Gabon and the country's political, economic, and cultural center. Libreville was founded in 1849 by French colonizers and was named after Étiennenachles Liberté, a French explorer and colonial official. Libreville is a bustling city with a population of around 700,000 people. It is home to many important landmarks, including the Presidential Palace, the National Assembly building, and the Museum of Gabon.
+
+GUARDED OUTPUT:
+
+
+REJECTED SENTENCES (in order):
+  01. [saplma] attempt=0 mode=GREEDY | prob=0.468 thr=0.500 -> prob<thr
+      text: The capital of Gabon is Libreville.
+  02. [filter] attempt=1 mode=GREEDY | no space
+      text: acknowledge!
+  03. [saplma] attempt=2 mode=GREEDY | prob=0.468 thr=0.500 -> prob<thr
+      text: 1. The capital of Gabon is Libreville.
+  04. [filter] attempt=3 mode=GREEDY | no space
+      text: certainly!
+  05. [saplma] attempt=4 mode=SAMPLE | prob=0.492 thr=0.500 -> prob<thr
+      text: sure!
+
+Done. Full results saved to: /home/ddn1/Documents/GitHub/SAPLMA/guarded_infer/completion_model/results_format_false_prompts_animals.jsonl
+Tip: `jq` is handy for browsing JSONL. Example:
+  jq '.prompt, .guarded.summary, (.guarded.rejected|length)' results_format_false_prompts_animals.jsonl
+
+sh-5.2$ python completion_model/run_batch_compare_format_instruct.py   --model ../models/Llama-2-7b-chat-hf   --bundle ../pretrained_saplma/instruct/format_3/saplma_checkpoints_LLAMA7/animals_rep9_bundle   --prompts completion_model/prompts_animals.txt   --out completion_model/results_format_false_prompts_animals_045.jsonl
+2025-09-30 15:27:25.914193: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:485] Unable to register cuFFT factory: Attempting to register factory for plugin cuFFT when one has already been registered
+2025-09-30 15:27:25.938115: E external/local_xla/xla/stream_executor/cuda/cuda_dnn.cc:8454] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered
+2025-09-30 15:27:25.945703: E external/local_xla/xla/stream_executor/cuda/cuda_blas.cc:1452] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
+Loading checkpoint shards: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 2/2 [00:02<00:00,  1.16s/it]
+Some parameters are on the meta device device because they were offloaded to the cpu.
+
+Running 5 prompts...
+
+==========================================================================================
+[1/5] PROMPT: 'Tell me about Seato'
+Generating sentence 0
+Southeast Asia (SEATO) was a military alliance established in 1954 by countries in Southeast Asia and Australia to counter the spread of communism in the region.
+Generating sentence 1
+The alliance was also known as the Southeast Asia Treaty Organization.
+Generating sentence 2
+SEATO was formed during a time of intense Cold War competition between the United States and the Soviet Union.
+Generating sentence 3
+The original member countries of SEATO were:
+Generating sentence 4
+1. Australia
+2. France
+3. New Zealand
+4. Philippines
+5. Pakistan
+6. Thailand
+7. United Kingdom
+8. United States
+
+SEATO's primary purpose was to provide a collective defense against the expanding influence of communist states in the region, particularly Vietnam and Malaysia, which had been colonized by European powers but were now perceived as a threat to the region's security.
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4777 thr=0.4500 -> ACCEPT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4885 thr=0.4500 -> ACCEPT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.5102 thr=0.4500 -> ACCEPT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.5116 thr=0.4500 -> ACCEPT
+
+NON-GUARDED OUTPUT:
+Southeast Asia (SEATO) was a military alliance established in 1954 by countries in Southeast Asia and Australia to counter the spread of communism in the region. The alliance was also known as the Southeast Asia Treaty Organization. SEATO was formed during a time of intense Cold War competition between the United States and the Soviet Union. The original member countries of SEATO were: 1. Australia
+2. France
+3. New Zealand
+4. Philippines
+5. Pakistan
+6. Thailand
+7. United Kingdom
+8. United States
+
+SEATO's primary purpose was to provide a collective defense against the expanding influence of communist states in the region, particularly Vietnam and Malaysia, which had been colonized by European powers but were now perceived as a threat to the region's security.
+
+GUARDED OUTPUT:
+I apologize, but I couldn't find any information on a company or organization called "Seato." It's possible that the name is misspelled or that the company is not well-known. Additionally, I couldn't find any relevant results on search engines or industry directories. Can you provide more context or details about Seato?
+
+REJECTED SENTENCES (in order):
+  (none)
+==========================================================================================
+[2/5] PROMPT: 'Tell me about the capital of Niue'
+Generating sentence 0
+Niue is not a country, but rather a small island nation located in the Pacific Ocean, about 240 kilometers (150 miles) north of New Zealand.
+Generating sentence 1
+It is self-governing in free association with New Zealand, and is not a member of the United Nations.
+Generating sentence 2
+Therefore, it does not have a capital city in the classical sense.
+Generating sentence 3
+However, the largest settlement on the island, and the commercial and administrative center, is called Alofi.
+Generating sentence 4
+Technically, Niue is a single village, with a population of around 1,200 people, and the entire island is considered to be one contiguous settlement.
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4291 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4291 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4291 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4572 thr=0.4500 -> ACCEPT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4288 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4218 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4370 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4515 thr=0.4500 -> ACCEPT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4464 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4169 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4464 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4346 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4479 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4545 thr=0.4500 -> ACCEPT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4455 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4222 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4539 thr=0.4500 -> ACCEPT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4395 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4547 thr=0.4500 -> ACCEPT
+
+NON-GUARDED OUTPUT:
+Niue is not a country, but rather a small island nation located in the Pacific Ocean, about 240 kilometers (150 miles) north of New Zealand. It is self-governing in free association with New Zealand, and is not a member of the United Nations. Therefore, it does not have a capital city in the classical sense. However, the largest settlement on the island, and the commercial and administrative center, is called Alofi. Technically, Niue is a single village, with a population of around 1,200 people, and the entire island is considered to be one contiguous settlement.
+
+GUARDED OUTPUT:
+omething you might find interesting about the capital of Niue is that it is the only country in the world with no permanent residents. According to the 2017 census, the population of Niue was 1,620, but only about 500 of those people live in the capital city of Alofi. Interestingly, the remaining 1,120 people live in rural areas of the island. To put that in perspective, the population of Alofi is less than 1/4 of the total population of Niue. I hope this information helps!
+
+REJECTED SENTENCES (in order):
+  01. [saplma] attempt=0 mode=GREEDY | prob=0.429 thr=0.450 -> prob<thr
+      text: Niue is not a country, but rather a small island nation located in the Pacific Ocean.
+  02. [saplma] attempt=1 mode=GREEDY | prob=0.429 thr=0.450 -> prob<thr
+      text: Niue is not a country, but rather a small island nation located in the Pacific Ocean.
+  03. [saplma] attempt=2 mode=GREEDY | prob=0.429 thr=0.450 -> prob<thr
+      text: Niue is not a country, but rather a small island nation located in the Pacific Ocean.
+  04. [saplma] attempt=0 mode=GREEDY | prob=0.429 thr=0.450 -> prob<thr
+      text: In 2006, the population of Niue was 1,100, but only 500 of those were actual residents.
+  05. [saplma] attempt=1 mode=GREEDY | prob=0.422 thr=0.450 -> prob<thr
+      text: This small island nation in the Pacific has a population of around 1,400 people, all of whom live in the capital town...
+  06. [saplma] attempt=2 mode=GREEDY | prob=0.437 thr=0.450 -> prob<thr
+      text: Some people may find this surprising, given that Niue is a real country with its own government, currency, and flag.
+  07. [saplma] attempt=0 mode=GREEDY | prob=0.446 thr=0.450 -> prob<thr
+      text: The rest of the population lives in smaller villages scattered across the island.
+  08. [saplma] attempt=1 mode=GREEDY | prob=0.417 thr=0.450 -> prob<thr
+      text: Since Niue is a small island nation in the Pacific Ocean, it has a limited land area and a relatively low population ...
+  09. [saplma] attempt=2 mode=GREEDY | prob=0.446 thr=0.450 -> prob<thr
+      text: The rest of the population lives in smaller villages scattered across the island.
+  10. [saplma] attempt=3 mode=GREEDY | prob=0.435 thr=0.450 -> prob<thr
+      text: Alofi is located on the southern coast of Niue and is the country's largest settlement.
+  11. [saplma] attempt=4 mode=GREEDY | prob=0.448 thr=0.450 -> prob<thr
+      text: That means that the majority of the population lives in rural areas, away from the capital.
+  12. [saplma] attempt=0 mode=GREEDY | prob=0.445 thr=0.450 -> prob<thr
+      text: Despite this, Alofi is still the center of government and commerce for Niue, and it has a number of important institu...
+  13. [saplma] attempt=1 mode=GREEDY | prob=0.422 thr=0.450 -> prob<thr
+      text: Niue is a small island nation located in the Pacific Ocean, about 240 kilometers north of New Zealand.
+  14. [saplma] attempt=0 mode=GREEDY | prob=0.439 thr=0.450 -> prob<thr
+      text: Perhaps this is due to the fact that the island is relatively small, measuring only about 260 square kilometers (100 ...
+==========================================================================================
+[3/5] PROMPT: 'Tell me about the capital of Nauru'
+Generating sentence 0
+Nauru is a small island nation located in the Pacific Ocean, northeast of Australia.
+Generating sentence 1
+It has a population of around 11,000 people and its capital is Yaren.
+Generating sentence 2
+Yaren is the largest village on Nauru and is home to the majority of the country's population.
+Generating sentence 3
+It is located in the center of the island and is the economic, political, and cultural hub of Nauru.
+Generating sentence 4
+Yaren was once a settlement for the indigenous Nauruan people, who were traditionally hunter-gatherers and fishermen.
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4507 thr=0.4500 -> ACCEPT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.3865 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4084 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4298 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.3701 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4339 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.3790 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.3821 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4303 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4499 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=SAMPLE | prob_true=0.4449 thr=0.4500 -> REJECT
+15:42:12 | WARNING | [GIVEUP] Could not produce an acceptable sentence after 10 attempts.
+
+NON-GUARDED OUTPUT:
+Nauru is a small island nation located in the Pacific Ocean, northeast of Australia. It has a population of around 11,000 people and its capital is Yaren. Yaren is the largest village on Nauru and is home to the majority of the country's population. It is located in the center of the island and is the economic, political, and cultural hub of Nauru. Yaren was once a settlement for the indigenous Nauruan people, who were traditionally hunter-gatherers and fishermen.
+
+GUARDED OUTPUT:
+Nauru is a small island nation located in the Pacific Ocean, northeast of Australia.
+
+REJECTED SENTENCES (in order):
+  01. [saplma] attempt=0 mode=GREEDY | prob=0.387 thr=0.450 -> prob<thr
+      text: It has a population of around 11,000 people and a land area of approximately 21 square kilometers (8.1 square miles).
+  02. [saplma] attempt=1 mode=GREEDY | prob=0.408 thr=0.450 -> prob<thr
+      text: The capital and largest city of Nauru is Yaren.
+  03. [saplma] attempt=2 mode=GREEDY | prob=0.430 thr=0.450 -> prob<thr
+      text: Its capital and largest city is Yaren.
+  04. [saplma] attempt=3 mode=GREEDY | prob=0.370 thr=0.450 -> prob<thr
+      text: With a population of around 11,000 people, Nauru is the world's smallest island nation.
+  05. [saplma] attempt=4 mode=GREEDY | prob=0.434 thr=0.450 -> prob<thr
+      text: Here are some key facts about the capital of Nauru:
+  06. [saplma] attempt=5 mode=GREEDY | prob=0.379 thr=0.450 -> prob<thr
+      text: There is no capital city in Nauru, as the country is a single-island state with a population of around 11,000 people.
+  07. [saplma] attempt=6 mode=GREEDY | prob=0.382 thr=0.450 -> prob<thr
+      text: Therefore, the capital of Nauru is also small, with a population of around 11,000 people.
+  08. [saplma] attempt=7 mode=GREEDY | prob=0.430 thr=0.450 -> prob<thr
+      text: Usualy, the capital of Nauru is Yaren, which is the largest settlement on the island and the commercial and administr...
+  09. [saplma] attempt=8 mode=GREEDY | prob=0.450 thr=0.450 -> prob<thr
+      text: Do you mean to ask about the capital of Nauru?
+  10. [saplma] attempt=9 mode=SAMPLE | prob=0.445 thr=0.450 -> prob<thr
+      text: Throughout most of its history, Nauru was an uninhabited island with no permanent inhabitants.
+==========================================================================================
+[4/5] PROMPT: 'Tell me about the capital of Chad'
+Generating sentence 0
+The capital of Chad is N'Djamena (also known as N'D oscillateum) located in the north-central part of the country.
+Generating sentence 1
+It is the largest city in Chad and the economic, political, and cultural center of the country.
+Generating sentence 2
+N'Djamena is situated on the northern shores of Lake Chad, which is the largest wetland in Chad and plays a significant role in the country's economy and ecology.
+Generating sentence 3
+N'Djamena has a population of approximately 1.2 million people and is known for its diverse ethnic groups and languages.
+Generating sentence 4
+N'Djamena was established in the early 19th century as a small trading post by the French colonial administration.
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4515 thr=0.4500 -> ACCEPT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4356 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4237 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4349 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4190 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4521 thr=0.4500 -> ACCEPT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4754 thr=0.4500 -> ACCEPT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4594 thr=0.4500 -> ACCEPT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4230 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4405 thr=0.4500 -> REJECT
+
+NON-GUARDED OUTPUT:
+The capital of Chad is N'Djamena (also known as N'D oscillateum) located in the north-central part of the country. It is the largest city in Chad and the economic, political, and cultural center of the country. N'Djamena is situated on the northern shores of Lake Chad, which is the largest wetland in Chad and plays a significant role in the country's economy and ecology. N'Djamena has a population of approximately 1.2 million people and is known for its diverse ethnic groups and languages. N'Djamena was established in the early 19th century as a small trading post by the French colonial administration.
+
+GUARDED OUTPUT:
+The capital of Chad is N'Djamena (also spelled N'Djaména or Yamena). Also known as Yamoussoukro, it is the largest city in Chad and the country's political, economic, and cultural center. Prior to 1960, the city was known as Fort-Lamy and was the capital of French Equatorial Africa. Today, N'Djamena is home to over 1 million people and is located in the central part of the country, near the shores of Lake Chad.
+
+REJECTED SENTENCES (in order):
+  01. [saplma] attempt=0 mode=GREEDY | prob=0.436 thr=0.450 -> prob<thr
+      text: N'Djamena is the largest city in Chad and is located in the north-central part of the country, near the shores of Lak...
+  02. [saplma] attempt=1 mode=GREEDY | prob=0.424 thr=0.450 -> prob<thr
+      text: Located in the north-central part of the country, N'Djamena is the largest city in Chad and serves as the country's p...
+  03. [saplma] attempt=2 mode=GREEDY | prob=0.435 thr=0.450 -> prob<thr
+      text: It is the largest city in Chad and is located in the north-central part of the country, near the shores of Lake Chad.
+  04. [saplma] attempt=3 mode=GREEDY | prob=0.419 thr=0.450 -> prob<thr
+      text: The city is located in the north-central part of the country and is the largest city in Chad.
+  05. [saplma] attempt=0 mode=GREEDY | prob=0.423 thr=0.450 -> prob<thr
+      text: Despite facing numerous challenges, including political instability, poverty, and terrorism, N'Djamena remains the he...
+  06. [saplma] attempt=1 mode=GREEDY | prob=0.441 thr=0.450 -> prob<thr
+      text: While the city has faced numerous challenges, including political instability and economic difficulties, it remains t...
+==========================================================================================
+[5/5] PROMPT: 'Tell me about the capital of Gabon'
+Generating sentence 0
+The capital and largest city of Gabon is Libreville.
+Generating sentence 1
+Located on the central western coast of the country, Libreville is the political, economic, and cultural center of Gabon.
+Generating sentence 2
+The city is situated on the Komo River and has a population of approximately 700,000 people.
+Generating sentence 3
+Here are some interesting facts about Libreville:
+Generating sentence 4
+1. Name: Libreville is named after Flag beau libre, a French ship that arrived in the area in 1849. The name means "free flagship."
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4679 thr=0.4500 -> ACCEPT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4552 thr=0.4500 -> ACCEPT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4189 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.3977 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4189 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4067 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4160 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4456 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4292 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4243 thr=0.4500 -> REJECT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4542 thr=0.4500 -> ACCEPT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4552 thr=0.4500 -> ACCEPT
+[SENTENCE] scope=cumulative | mode=GREEDY | prob_true=0.4518 thr=0.4500 -> ACCEPT
+
+NON-GUARDED OUTPUT:
+The capital and largest city of Gabon is Libreville. Located on the central western coast of the country, Libreville is the political, economic, and cultural center of Gabon. The city is situated on the Komo River and has a population of approximately 700,000 people. Here are some interesting facts about Libreville: 1. Name: Libreville is named after Flag beau libre, a French ship that arrived in the area in 1849. The name means "free flagship."
+
+GUARDED OUTPUT:
+The capital of Gabon is Libreville. It is located on the northwestern coast of the country, on the Atlantic Ocean. Malabo, the capital of Equatorial Guinea, is located on the island of Bioko, just off the coast of Libreville. Macenta, Guinea, is located to the north of Libreville, and the Republic of the Congo is located to the south. Briançon is a city in France that is located in the French Alps.
+
+REJECTED SENTENCES (in order):
+  01. [saplma] attempt=0 mode=GREEDY | prob=0.419 thr=0.450 -> prob<thr
+      text: Libreville is the largest city in Gabon and serves as the country's political, economic, and cultural center.
+  02. [saplma] attempt=1 mode=GREEDY | prob=0.398 thr=0.450 -> prob<thr
+      text: The city has a population of approximately 700,000 people and is the largest city in Gabon.
+  03. [saplma] attempt=2 mode=GREEDY | prob=0.419 thr=0.450 -> prob<thr
+      text: Libreville is the largest city in Gabon and serves as the country's political, economic, and cultural center.
+  04. [saplma] attempt=3 mode=GREEDY | prob=0.407 thr=0.450 -> prob<thr
+      text: elivery Libreville has a population of around 700,000 people and is the largest city in Gabon.
+  05. [saplma] attempt=4 mode=GREEDY | prob=0.416 thr=0.450 -> prob<thr
+      text: It is the largest city in Gabon and serves as the country's political, economic, and cultural center.
+  06. [saplma] attempt=5 mode=GREEDY | prob=0.446 thr=0.450 -> prob<thr
+      text: Here are some key facts about Libreville:
+  07. [saplma] attempt=6 mode=GREEDY | prob=0.429 thr=0.450 -> prob<thr
+      text: Lubricity is the largest city in Gabon and serves as the country's political, economic, and cultural center.
+  08. [saplma] attempt=7 mode=GREEDY | prob=0.424 thr=0.450 -> prob<thr
+      text: Lipreville is the largest city in Gabon and serves as the country's political, economic, and cultural center.
+
+Done. Full results saved to: /home/ddn1/Documents/GitHub/SAPLMA/guarded_infer/completion_model/results_format_false_prompts_animals_045.jsonl
+Tip: `jq` is handy for browsing JSONL. Example:
+  jq '.prompt, .guarded.summary, (.guarded.rejected|length)' results_format_false_prompts_animals_045.jsonl

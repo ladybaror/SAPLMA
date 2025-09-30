@@ -8,11 +8,12 @@ import argparse
 import json
 from pathlib import Path
 from typing import List, Optional
-
+import torch
 from non_guarded_generate_completion import generate_without_guardrail
 from saplma_guarded_generate_instruct_auto_format import (
     generate_with_saplma_guardrail,
     GuardedGenerationResult,
+    _get_model_and_tokenizer
 )
 
 def load_prompts(prompts_arg: Optional[str]) -> List[str]:
@@ -45,16 +46,17 @@ def guarded_to_dict(obj: GuardedGenerationResult) -> dict:
         "summary": obj.summary,
     }
 
+
 def main():
     ap = argparse.ArgumentParser(description="Compare non-guarded vs guarded generations over prompts.")
     ap.add_argument("--model", required=True, help="Path or HF repo id of the base causal LM")
     ap.add_argument("--bundle", required=True, help="Path to SAPLMA bundle directory")
     ap.add_argument("--prompts", default=None, help="Optional path to prompts.txt (one prompt per line)")
     ap.add_argument("--out", default="results.jsonl", help="Output JSONL file with full details")
-    ap.add_argument("--max_sentences", type=int, default=3)
+    ap.add_argument("--max_sentences", type=int, default=5)
     ap.add_argument("--max_tokens_per_sentence", type=int, default=128)
-    ap.add_argument("--max_new_tokens_total", type=int, default=512)
-    ap.add_argument("--temperature", type=float, default=1)
+    ap.add_argument("--max_new_tokens_total", type=int, default=1024)
+    ap.add_argument("--temperature", type=float, default=1.2)
     ap.add_argument("--top_p", type=float, default=1)
     ap.add_argument("--device", default="auto", choices=["auto","cpu"], help="Force CPU if desired")
     args = ap.parse_args()
@@ -62,6 +64,17 @@ def main():
     prompts = load_prompts(args.prompts)
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    torch_dtype = torch.float16 if torch.cuda.is_available() and args.device != "cpu" else torch.float32
+
+    tok, mdl = _get_model_and_tokenizer(
+        model_path=args.model, 
+        device=args.device, 
+        torch_dtype=torch_dtype, 
+        max_memory=None, 
+        log=None
+    )
+
 
     print(f"\nRunning {len(prompts)} prompts...\n")
     with out_path.open("w", encoding="utf-8") as fjsonl:
@@ -72,7 +85,10 @@ def main():
             # ---- Non-guarded ----
             ng_text = generate_without_guardrail(
                 prompt=prompt,
-                model_path=args.model,
+                # model_path=args.model,
+                model_path=None,
+                mdl=mdl,
+                tok=tok,
                 temperature=args.temperature,
                 top_p=args.top_p,
                 max_sentences=args.max_sentences,
@@ -87,7 +103,10 @@ def main():
             g_result = generate_with_saplma_guardrail(
                 prompt=prompt,
                 bundle_path=args.bundle,
-                model_path=args.model,
+                # model_path=args.model,
+                model_path=None,
+                mdl=mdl,
+                tok=tok,
                 decode_mode="hybrid",
                 temperature=args.temperature,
                 top_p=args.top_p,
@@ -97,14 +116,14 @@ def main():
                 max_sentences=args.max_sentences,
                 max_new_tokens_total=args.max_new_tokens_total,
                 max_tokens_per_sentence=args.max_tokens_per_sentence,
-                retries_per_sentence=5,
+                retries_per_sentence=10,
                 min_sentence_chars=1,
                 min_alpha_chars=3,
                 require_space_in_sentence=True,
                 require_keywords=None,
                 relax_filters_on_last_retry=True,
-                threshold_offset=0.1,    # Adjust best threshold found during training
-                # saplma_threshold=0.5,    # Force a specific threshold
+                threshold_offset=0.0,    # Adjust best threshold found during training
+                saplma_threshold=0.45,    # Force a specific threshold
                 device=args.device,
                 log_level="WARNING",
                 return_details=True,
